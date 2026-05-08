@@ -1,0 +1,44 @@
+# Local-only Codex / agent instructions
+/AGENTS.md
+
+# Private prompt / notes
+/_prompt/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Outputs / generated files
+outputs/
+results/
+checkpoints/
+logs/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
