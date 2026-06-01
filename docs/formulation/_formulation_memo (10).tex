@@ -1,0 +1,3581 @@
+\documentclass[twoside,11pt]{article}
+
+\usepackage{blindtext}
+
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+% Available options for package jmlr2e are:
+%
+%   - abbrvbib : use abbrvnat for the bibliography style
+%   - nohyperref : do not load the hyperref package
+%   - preprint : remove JMLR specific information from the template,
+%         useful for example for posting to preprint servers.
+%
+% Example of using the package with custom options:
+%
+% \usepackage[abbrvbib, preprint]{jmlr2e}
+
+\usepackage{jmlr2e}
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+% Heading arguments are {volume}{year}{pages}{date submitted}{date published}{paper id}{author-full-names}
+
+\usepackage{lastpage}
+\jmlrheading{23}{2022}{1-\pageref{LastPage}}{1/21; Revised 5/22}{9/22}{21-0000}{Author One and Author Two}
+
+% Short headings should be running head and authors last names
+\ShortHeadings{Sample JMLR Paper}{One and Two}
+\firstpageno{1}
+
+% custom pacages and commands
+
+
+% 1. Mathematical Packages
+\usepackage{amsmath, mathtools}
+\usepackage{bm}
+
+% 2. Algorithms
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\algrenewcommand\algorithmicrequire{\textbf{Require:}}
+\algrenewcommand\algorithmicensure{\textbf{Ensure:}}
+
+% 3. Figures and Tables
+\usepackage{subcaption}
+\usepackage{booktabs}
+
+% 42. external file
+\input{mathdef.tex}
+
+\begin{document}
+
+\title{formulation memo}
+
+\author{\name Ryogo Tanaka \email @osaka-u \\
+       \addr Dep.\\
+       Habdai.\\
+       Suita.
+       % \AND
+       % \name Author Two \email two@cs.berkeley.edu \\
+       % \addr Division of Computer Science\\
+       % University of California\\
+       % Berkeley, CA 94720-1776, USA
+       }
+
+\editor{My editor}
+
+\maketitle
+
+% \begin{abstract}%   <- trailing '%' for backward compatibility of .sty file
+% \end{abstract}
+
+% \begin{keywords}
+%   keyword one, keyword two, keyword three
+% \end{keywords}
+
+\section{Motivation and positioning}
+\label{sec:motivation}
+
+Learning stochastic nonlinear dynamics from high-dimensional and
+partially observed time series requires both a representation of the
+latent dynamical state and an operator that propagates that
+representation forward in time. Embedded latent transfer-operator
+models address this problem by representing latent state laws through
+Hilbert-space mean embeddings and by propagating these embedded laws
+with linear transfer operators. In this view, the object being propagated
+is not a point-valued latent state, but an embedded probability law.
+
+Deep Spectral Learning of Embedded Latent Transfer Operators (DSE)
+extends this operator-theoretic viewpoint to learned deep features and
+finite-dimensional Galerkin coordinates. Given a learned observation
+encoder, DSE constructs predictive state coordinates by a functional
+CCA / stochastic realization step and then estimates the embedded
+transfer and observable operators by ridge-regularized Galerkin
+regressions. This is a powerful spectral construction: the latent
+coordinates are chosen so that past and future observation features are
+maximally correlated in an appropriate feature space.
+
+The goal of proposed method is not to reject this spectral state construction.
+Rather, we seek an alternative state-construction principle whose
+semantics are tied directly to filtering. In DSE, the CCA-based
+coordinates are constructed before the filtering problem is explicitly
+formulated. Consequently, the training-time state construction and the
+test-time prediction-correction update are conceptually separated. In
+contrast, we would like the latent coordinates themselves to be defined
+as prior and posterior embedded beliefs.
+
+To this end, we introduce two Galerkin coordinates at each time index:
+\begin{align}
+\va_t^-
+&\approx
+P_A
+\mathbb E[
+\phi_x(\rvx(t))
+\mid
+\rvy(1{:}t-1)
+],
+\label{eq:motivation_prior_coordinate}
+\\
+\va_t^+
+&\approx
+P_A
+\mathbb E[
+\phi_x(\rvx(t))
+\mid
+\rvy(1{:}t)
+].
+\label{eq:motivation_posterior_coordinate}
+\end{align}
+Here, $\va_t^-$ is intended to represent the projected prior embedded
+state law before incorporating the observation at time $t$, while
+$\va_t^+$ is intended to represent the projected posterior embedded
+state law after incorporating that observation. Thus, the state
+coordinates are not point-valued latent states. They are relaxed
+Galerkin coordinates of projected conditional mean embeddings.
+
+This perspective is inspired by kernel Bayes and kernel Kalman
+inference, where probability laws are represented by RKHS mean
+embeddings and belief updates are performed through Hilbert-space
+residual minimization rather than explicit parametric density
+estimation. We do not aim to implement the kernel Kalman rule directly.
+Instead, we use its prior/posterior embedded-belief update philosophy as
+a state-construction principle within the Galerkin operator-learning
+framework of DSE.
+
+The proposed formulation replaces the CCA-based realization step by an
+embedding free energy over the prior and posterior coordinates
+$\{\va_t^-,\va_t^+\}_{t=1}^T$. This free energy consists of three
+components: observation consistency, prior-to-posterior correction, and
+transfer consistency. Observation consistency requires the posterior
+coordinate to explain the observed embedding through the observable
+operator. Prior-to-posterior correction prevents the posterior embedded
+belief from moving unnecessarily far from the prior embedded belief.
+Transfer consistency requires the posterior coordinate at time $t$ to be
+propagated by the learned transfer operator to the prior coordinate at
+time $t+1$.
+
+The transfer and observable matrices are still estimated as Galerkin
+operators. In particular, $V_A$ and $V_B$ are not arbitrary neural
+layers; they are ridge-regularized finite-dimensional representations of
+projected conditional operators. Thus, the operator-learning core of DSE
+is retained, while the CCA-based state construction is replaced by a
+Hilbert-space embedded-belief inference principle.
+
+After learning the embedded-state coordinates and operators, prediction
+is performed by a causal filtering recursion. The learned transfer
+operator propagates the posterior coordinate from the previous time step
+to a new prior coordinate,
+\begin{align}
+\bar{\va}_t^-
+=
+V_A \bar{\va}_{t-1}^+ .
+\label{eq:motivation_test_prior}
+\end{align}
+The current observation then corrects this prior through an
+embedding-space innovation. In the centered Galerkin convention used
+below, this correction has the form
+\begin{align}
+\bar{\va}_t^+
+=
+\bar{\va}_t^-
++
+K_t
+\left(
+\tilde{\vb}_t - V_B\bar{\va}_t^-
+\right),
+\label{eq:motivation_test_posterior}
+\end{align}
+where $\tilde{\vb}_t$ denotes the centered observation-embedding
+coordinate. The prior coordinate $\bar{\va}_t^-$, not the posterior
+coordinate, is used for one-step causal prediction through the
+observable operator and a read-out / decoder map. This separates
+embedded-state and operator learning from raw-observation prediction,
+while preserving the same prediction--correction semantics at training
+and test time.
+
+The resulting method is therefore not a new non-Gaussian filtering
+method in isolation, nor a direct deep implementation of KKR. It is a
+Galerkin embedded-belief learning formulation that connects the
+Hilbert-space filtering philosophy of kernel Kalman methods with the
+operator-learning structure of DSE. Its central aim is to make state
+construction, observation correction, transfer consistency, and
+test-time causal prediction part of a single operator-theoretic
+formulation.
+
+
+\section{Background overview}
+\label{sec:background}
+
+A probabilistic state-space model is specified by a latent process
+$\{\rvx(t)\}_{t=1}^T$ and an observation process
+$\{\rvy(t)\}_{t=1}^T$, with realizations
+$\vx(t)\in\mathcal X$ and $\vy(t)\in\mathcal Y$. Its joint law is written as
+\begin{align}
+p_\theta(\rvx(1{:}T),\rvy(1{:}T))
+=
+p_\theta(\rvx(1))
+\prod_{t=2}^T p_\theta(\rvx(t)\mid \rvx(t-1))
+\prod_{t=1}^T p_\theta(\rvy(t)\mid \rvx(t)).
+\label{eq:ssm_factorization}
+\end{align}
+This factorization separates temporal propagation through the transition law from data generation through the observation law. In the linear-Gaussian case,
+\begin{align}
+\rvx(t)
+&=
+\mA \rvx(t-1) + \rvw(t),
+&
+\rvy(t)
+&=
+\mC \rvx(t) + \rvv(t),
+\label{eq:linear_gaussian_ssm}
+\end{align}
+with $\rvw(t)\sim\mathcal N(0,\mQ)$ and $\rvv(t)\sim\mathcal N(0,\mR)$, the complete-data negative log density is, up to constants,
+\begin{align}
+-\log p_\theta(\rvx(1{:}T),\rvy(1{:}T))
+&=
+\frac{1}{2}
+\sum_{t=1}^T
+(\vy(t)-\mC \vx(t))^\top \mR^{-1}(\vy(t)-\mC \vx(t))
+\nonumber\\
+&\quad+
+\frac{1}{2}
+\sum_{t=2}^T
+(\vx(t)-\mA \vx(t-1))^\top \mQ^{-1}(\vx(t)-\mA \vx(t-1))
+\nonumber\\
+&\quad+
+\frac{1}{2}
+(\vx(1)-\bm{\pi}_1)^\top \mV_1^{-1}(\vx(1)-\bm{\pi}_1).
+\label{eq:complete_data_nll}
+\end{align}
+The observation and transition terms in \eqref{eq:complete_data_nll} are the quadratic residuals underlying Kalman filtering, smoothing, and maximum-likelihood estimation in linear dynamical systems \citep{katayama2005subspace}.
+
+A complementary description is obtained in Hilbert feature spaces. Let $\rvx$ and $\rvy$ be random variables taking values $\vx \in \mathcal X$ and $\vy \in \mathcal Y$, and let $\mathcal H$ and $\mathcal G$ be separable Hilbert spaces. Consider feature maps
+\begin{align}
+\phi_x:\mathcal X\to\mathcal H,
+\qquad
+\psi_y:\mathcal Y\to\mathcal G
+\label{eq:feature_maps}
+\end{align}
+such that
+\begin{align}
+\mathbb E[\|\phi_x(\rvx)\|_{\mathcal H}^2] < \infty,
+\qquad
+\mathbb E[\|\psi_y(\rvy)\|_{\mathcal G}^2] < \infty.
+\label{eq:feature_square_integrable}
+\end{align}
+The corresponding mean elements are
+\begin{align}
+\mu_{\rvx}
+&:=
+\mathbb E[\phi_x(\rvx)]
+=
+\int \phi_x(\vx)\,dP_{\rvx}(\vx)
+\in\mathcal H,
+\nonumber\\
+\mu_{\rvy}
+&:=
+\mathbb E[\psi_y(\rvy)]
+=
+\int \psi_y(\vy)\,dP_{\rvy}(\vy)
+\in\mathcal G.
+\label{eq:mean_elements}
+\end{align}
+For $a\in\mathcal G$ and $b,w\in\mathcal H$, define the rank-one operator
+\begin{align}
+(a\otimes b)w
+:=
+\langle w,b\rangle_{\mathcal H}\,a.
+\label{eq:rank_one_operator}
+\end{align}
+The covariance and cross-covariance operators are
+\begin{align}
+\mathcal C_{\rvx}
+&:=
+\mathbb E[\phi_x(\rvx)\otimes \phi_x(\rvx)],
+&
+\mathcal C_{\rvy\rvx}
+&:=
+\mathbb E[\psi_y(\rvy)\otimes \phi_x(\rvx)].
+\label{eq:covariance_crosscovariance}
+\end{align}
+Restricting conditional expectation to linear predictors on feature space yields the regularized least-squares problem
+\begin{align}
+\mathcal A^\ast
+:=
+\arg\min_{\mathcal A\in L(\mathcal H,\mathcal G)}
+\mathbb E
+\!\left[
+\|\psi_y(\rvy)-\mathcal A \phi_x(\rvx)\|_{\mathcal G}^2
+\right]
++
+\lambda \|\mathcal A\|_{\mathrm{HS}}^2,
+\label{eq:conditional_operator_regression}
+\end{align}
+where $\lambda>0$ and $L(\mathcal H,\mathcal G)$ denotes the space of bounded linear operators from $\mathcal H$ to $\mathcal G$. The normal equation gives
+\begin{align}
+\mathcal A^\ast
+=
+\mathcal C_{\rvy\rvx}
+(\mathcal C_{\rvx}+\lambda \mathcal I)^{-1},
+\label{eq:conditional_operator_solution}
+\end{align}
+where $\mathcal I$ is the identity operator on $\mathcal H$. Accordingly, the regularized conditional covariance operator is
+\begin{align}
+\mathcal C_{\rvy\mid \rvx}
+:=
+\mathcal C_{\rvy\rvx}
+(\mathcal C_{\rvx}+\lambda \mathcal I)^{-1}.
+\label{eq:conditional_covariance_operator}
+\end{align}
+This operator is the population-optimal linear predictor of $\psi_y(\rvy)$ from $\phi_x(\rvx)$ in the regularized mean-squared sense \citep{Fukumizu2004,Hsing2015,Song2009}.
+
+The operator-valued state-space representation used in DSE is obtained by applying this construction to stochastic dynamics. Let $\{\rvx(t)\}_{t\in\mathbb T}$ be a latent stationary Markov process on $\mathcal X$, and let $\{\rvy(t)\}_{t\in\mathbb T}$ be an observation process on $\mathcal Y$. At the distribution level, the transition and observation channels map marginal laws by
+\begin{align}
+p_{t+1}(\vx)
+&=
+\int_{\mathcal X}
+p_{\mathrm{tr}}(\vx \mid \vz)\,p_t(\vz)\,d\vz,
+&
+q_t(\vy)
+&=
+\int_{\mathcal X}
+p_{\mathrm{ob}}(\vy \mid \vx)\,p_t(\vx)\,d\vx .
+\label{eq:density_level_dynamics}
+\end{align}
+At the embedding level, define
+\begin{align}
+\mathcal T_e
+&:=
+\mathcal C_{\rvx(t+1)\mid \rvx(t)},
+&
+\mathcal O_e
+&:=
+\mathcal C_{\rvy(t)\mid \rvx(t)}.
+\label{eq:operator_level_maps}
+\end{align}
+Then the embedded laws evolve linearly as
+\begin{align}
+\mu_{\rvx(t+1)}
+&=
+\mathcal T_e \mu_{\rvx(t)},
+&
+\mu_{\rvy(t)}
+&=
+\mathcal O_e \mu_{\rvx(t)}.
+\label{eq:operator_level_ssm}
+\end{align}
+This is the operator-level state-space model retained in the formulation developed below when stochastic realization is replaced by projected latent-state learning.
+
+At the finite-dimensional level, DSE estimates linear operators on learned feature subspaces by a two-stage deep-feature procedure. For generic random variables $\rvx$ and $\rvz$ and a scalar target $s\in\mathbb R$, the structural objective is
+\begin{align}
+\min_{\xi,\theta_X,\theta_Z}
+\mathbb E
+\!\left[
+\bigl(
+s-r_\xi(\mathbb E[\psi_{\theta_X}(\rvx)\mid \rvz])
+\bigr)^2
+\right].
+\label{eq:two_stage_target}
+\end{align}
+Its first stage estimates the conditional mean feature map by
+\begin{align}
+\min_{\mV,\theta_Z}
+\frac{1}{N}
+\sum_{i=1}^N
+\|\psi_{\theta_X}(\vx_i)-\mV\phi_{\theta_Z}(\vz_i)\|_2^2
++
+\lambda_1\|\mV\|_F^2,
+\label{eq:two_stage_stage1}
+\end{align}
+whose closed-form solution for fixed features is
+\begin{align}
+\hat{\mV}
+=
+\Psi\Phi^\top(\Phi\Phi^\top+\lambda_1\mI)^{-1}.
+\label{eq:two_stage_closed_form}
+\end{align}
+This is the finite-dimensional ridge-regression block that later yields the projected transfer and observable operators. The formulation developed below preserves this operator-estimation mechanism and replaces only the stochastic-realization block by projected latent-state learning.
+
+
+\section{Statistical Target and Embedding-Free-Energy Principle}
+\label{sec:statistical_objective}
+
+The object of inference is not a point-valued latent state, but the
+prior and posterior mean embeddings of the latent state law. Let
+$\{\rvx(t)\}_{t=1}^T$ be the latent Markov process and
+$\{\rvy(t)\}_{t=1}^T$ the observation process. Let
+$\phi_x:\mathcal X\to\mathcal H$ and
+$\psi_y:\mathcal Y\to\mathcal G$ be square-integrable feature maps.
+For each time index $t$, define the ideal prior and posterior embedded
+state laws by
+\begin{align}
+\mu_{x,t}^{-,\star}
+&:=
+\mathbb E[
+\phi_x(\rvx(t))
+\mid
+\rvy(1{:}t-1)
+],
+\label{eq:ideal_prior_embedding}
+\\
+\mu_{x,t}^{+,\star}
+&:=
+\mathbb E[
+\phi_x(\rvx(t))
+\mid
+\rvy(1{:}t)
+].
+\label{eq:ideal_posterior_embedding}
+\end{align}
+These are Hilbert-space valued conditional expectations. Equivalently,
+they are the orthogonal projections of $\phi_x(\rvx(t))$ onto the
+closed subspaces of Hilbert-space valued random variables measurable
+with respect to $\sigma(\rvy(1{:}t-1))$ and $\sigma(\rvy(1{:}t))$,
+respectively. Thus, the statistical target is a conditional mean
+embedding, not a realized latent coordinate.
+
+Let $\mathcal H_A\subset\mathcal H$ and
+$\mathcal G_B\subset\mathcal G$ be finite-dimensional trial spaces, and
+let
+\begin{align}
+P_A:\mathcal H\to\mathcal H_A,
+\qquad
+P_B:\mathcal G\to\mathcal G_B
+\label{eq:projection_operators_statistical}
+\end{align}
+be the corresponding orthogonal projections. The finite-dimensional
+targets are the projected prior and posterior mean embeddings
+\begin{align}
+\bar\mu_{t}^{-,\star}
+&:=
+P_A\mu_{x,t}^{-,\star},
+&
+\bar\mu_{t}^{+,\star}
+&:=
+P_A\mu_{x,t}^{+,\star}.
+\label{eq:projected_prior_posterior_embeddings}
+\end{align}
+The optimization variables
+\begin{align}
+\mu_t^- \in \mathcal H_A,
+\qquad
+\mu_t^+ \in \mathcal H_A
+\label{eq:prior_posterior_variables_hilbert}
+\end{align}
+are relaxed Galerkin representatives intended to approximate
+$\bar\mu_t^{-,\star}$ and $\bar\mu_t^{+,\star}$. We do not require
+these variables to be exact projected mean embeddings of valid
+probability laws; instead, inference is performed in the relaxed trial
+space $\mathcal H_A$.
+
+These variables are training-time variational representatives. In the
+core learning problem, the entire sequence
+$\{\mu_t^-,\mu_t^+\}_{t=1}^T$ is optimized jointly together with the
+projected operators. Therefore, although the variables are assigned
+prior/posterior embedded-belief semantics, they should not be identified
+with the output of an online filtering recursion.
+
+After the projected operators and the Galerkin coordinate system have
+been learned, the causal filtering path is generated separately by a
+recursive prediction--correction rule. We denote that path by
+$\{\bar\mu_t^-,\bar\mu_t^+\}_{t=1}^T$ in Hilbert-space notation and by
+$\{\bar{\va}_t^-,\bar{\va}_t^+\}_{t=1}^T$ in finite-dimensional
+coordinates. This distinction separates the batch construction of
+embedded-belief coordinates from the causal filtering procedure used for
+prediction.
+
+The observation at time $t$ gives the empirical observation-law
+embedding
+\begin{align}
+\psi_y(\vy(t))\in\mathcal G.
+\end{align}
+Its projected observation feature is
+\begin{align}
+\psi_t^\Pi
+:=
+P_B\psi_y(\vy(t))
+\in\mathcal G_B.
+\label{eq:projected_observation_embedding_revised}
+\end{align}
+Let
+\begin{align}
+\mathcal T_A:\mathcal H_A\to\mathcal H_A,
+\qquad
+\mathcal O_B:\mathcal H_A\to\mathcal G_B
+\label{eq:projected_transfer_observable_hilbert}
+\end{align}
+denote the projected transfer and observable operators. The operator
+$\mathcal T_A$ propagates posterior embedded state laws to prior
+embedded state laws, while $\mathcal O_B$ maps an embedded state law to
+a projected observation-law embedding.
+
+The prior prediction is defined by the projected transfer operator,
+\begin{align}
+\mu_{t+1}^-
+\approx
+\mathcal T_A \mu_t^+.
+\label{eq:prior_prediction_hilbert}
+\end{align}
+At time $t$, given a prior embedded state $\mu_t^-$, the posterior
+embedded state is defined as the solution of a Hilbert-space
+regularized inverse problem. In the ideal noiseless case, one would seek
+an element $\mu\in\mathcal H_A$ satisfying the observation consistency
+condition
+\begin{align}
+\mathcal O_B\mu
+=
+\psi_t^\Pi.
+\label{eq:hard_observation_consistency}
+\end{align}
+Among all such elements, the posterior should remain closest to the
+prior embedded state $\mu_t^-$. This gives the constrained projection
+problem
+\begin{align}
+\min_{\mu\in\mathcal H_A}
+\frac12
+\|\mu-\mu_t^-\|_{(\mathcal C_t^-)^\dagger}^2
+\quad
+\text{subject to}
+\quad
+\mathcal O_B\mu=\psi_t^\Pi,
+\label{eq:hard_projection_posterior_update}
+\end{align}
+where $\mathcal C_t^-:\mathcal H_A\to\mathcal H_A$ is a positive
+semi-definite metric or preconditioning operator associated with the
+prior embedded state.
+
+In practice, the hard constraint in
+\eqref{eq:hard_projection_posterior_update} is too restrictive because
+of stochastic observations, finite-dimensional projection error, and
+operator-estimation error. We therefore use its Tikhonov relaxation:
+\begin{align}
+\mu_t^+
+=
+\arg\min_{\mu\in\mathcal H_A}
+\frac12
+\|\psi_t^\Pi-\mathcal O_B\mu\|_{\mathcal R_B^{-1}}^2
++
+\frac12
+\|\mu-\mu_t^-\|_{(\mathcal C_t^-)^\dagger}^2
++
+\Omega_A(\mu).
+\label{eq:hilbert_posterior_update_objective}
+\end{align}
+Here $\mathcal R_B:\mathcal G_B\to\mathcal G_B$ is a positive definite
+metric for observation-embedding residuals, and
+$\Omega_A$ is an optional regularizer on the Galerkin state element.
+The operator $\mathcal C_t^-$ is not assumed to be the covariance of a
+Gaussian latent variable. It specifies the local geometry of the
+prior-to-posterior update in the embedded-state space, playing the role
+of a recursive least-squares preconditioner or inverse-curvature metric.
+
+When $\Omega_A=0$, the first-order condition for
+\eqref{eq:hilbert_posterior_update_objective} is
+\begin{align}
+\left(
+\mathcal O_B^\ast\mathcal R_B^{-1}\mathcal O_B
++
+(\mathcal C_t^-)^\dagger
+\right)
+\mu_t^+
+=
+\mathcal O_B^\ast\mathcal R_B^{-1}\psi_t^\Pi
++
+(\mathcal C_t^-)^\dagger \mu_t^-.
+\label{eq:hilbert_posterior_normal_equation}
+\end{align}
+Equivalently, when the inverses are well-defined on the relevant
+subspaces, this update can be written in innovation form as
+\begin{align}
+\mu_t^+
+&=
+\mu_t^-
++
+\mathcal K_t
+\left(
+\psi_t^\Pi-\mathcal O_B\mu_t^-
+\right),
+\label{eq:hilbert_innovation_update}
+\\
+\mathcal K_t
+&=
+\mathcal C_t^- \mathcal O_B^\ast
+\left(
+\mathcal O_B \mathcal C_t^- \mathcal O_B^\ast
++
+\mathcal R_B
+\right)^{-1}.
+\label{eq:hilbert_gain_operator}
+\end{align}
+This is the Hilbert-space analogue of a Kalman or KKR-type correction:
+the update is obtained from a residual-minimization principle on
+embedded state laws, not from a Gaussian distributional assumption on
+finite-dimensional latent coordinates.
+
+The transfer relation is also imposed at the level of embedded laws. In
+an exact infinite-dimensional model one would have
+$\mu_{t+1}^-=\mathcal T_A\mu_t^+$. In the projected finite-dimensional
+setting, this identity is softened to a transfer-consistency penalty
+\begin{align}
+\frac12
+\|\mu_{t+1}^- - \mathcal T_A\mu_t^+\|_{\mathcal Q_A^{-1}}^2,
+\label{eq:hilbert_transfer_consistency}
+\end{align}
+where $\mathcal Q_A:\mathcal H_A\to\mathcal H_A$ is a positive definite
+metric for transfer residuals. This metric represents Galerkin
+projection error, operator-estimation error, and model mismatch in the
+embedded-state dynamics; it is not required to be interpreted as a
+Gaussian process-noise covariance.
+
+For fixed projected operators $\mathcal T_A$ and $\mathcal O_B$, the
+training-time embedded-state objective over a sequence is therefore
+\begin{align}
+\mathcal F_H
+(\{\mu_t^-,\mu_t^+\}_{t=1}^T
+\mid
+\mathcal T_A,\mathcal O_B)
+&=
+\frac12
+\|\mu_1^- - \mu_{\mathrm{init}}\|_{\mathcal P_0^{-1}}^2
+\nonumber\\
+&\quad+
+\sum_{t=1}^T
+\left[
+\frac12
+\|\psi_t^\Pi-\mathcal O_B\mu_t^+\|_{\mathcal R_B^{-1}}^2
++
+\frac12
+\|\mu_t^+ - \mu_t^-\|_{(\mathcal C_t^-)^\dagger}^2
++
+\Omega_A(\mu_t^+)
+\right]
+\nonumber\\
+&\quad+
+\sum_{t=1}^{T-1}
+\frac12
+\|\mu_{t+1}^- - \mathcal T_A\mu_t^+\|_{\mathcal Q_A^{-1}}^2 .
+\label{eq:hilbert_embedding_free_energy}
+\end{align}
+The first line is the initial prior-deviation term. The second line is
+the observation-consistency and prior-to-posterior correction energy.
+The third line is the transfer-consistency energy. We refer to
+\eqref{eq:hilbert_embedding_free_energy} as an embedding free energy:
+it has the structure of a variational filtering objective, but its
+terms are Hilbert-space discrepancies between embedded laws rather than
+negative log likelihoods of an explicit parametric state-space model.
+
+The ridge penalties used to estimate $\mathcal T_A$ and $\mathcal O_B$
+are not included in \eqref{eq:hilbert_embedding_free_energy}. They
+belong to the separate Galerkin operator-estimation subproblems. This
+separation preserves the operator-learning structure used in DSE:
+embedded-state inference is performed for fixed projected operators,
+and the operators are then updated by regularized conditional-operator
+regression.
+
+
+\section{Finite-Dimensional Galerkin Formulation}
+\label{sec:finite_galerkin_formulation}
+
+We now write the embedding free energy
+\eqref{eq:hilbert_embedding_free_energy} in finite-dimensional Galerkin
+coordinates. Let
+\begin{align}
+\mathcal H_A
+&=
+\operatorname{span}\{\chi_1,\dots,\chi_{d_A}\},
+&
+\mathcal G_B
+&=
+\operatorname{span}\{\omega_1,\dots,\omega_{d_B}\}
+\label{eq:finite_trial_spaces}
+\end{align}
+be the latent-state and observation trial spaces. For notational
+simplicity, we assume in this section that the bases are
+orthonormalized. If non-orthonormal bases are used, all coefficient
+vectors below are understood as mass-matrix-normalized Galerkin
+coordinates.
+
+The projected prior and posterior embedded-state elements are expanded
+as
+\begin{align}
+\mu_t^-
+&=
+\sum_{i=1}^{d_A}
+a_{i,t}^-\,\chi_i,
+&
+\mu_t^+
+&=
+\sum_{i=1}^{d_A}
+a_{i,t}^+\,\chi_i,
+\label{eq:prior_posterior_galerkin_expansion}
+\end{align}
+with coefficient vectors
+\begin{align}
+\va_t^-
+&=
+[a_{1,t}^-,\dots,a_{d_A,t}^-]^\top
+\in\mathbb R^{d_A},
+&
+\va_t^+
+&=
+[a_{1,t}^+,\dots,a_{d_A,t}^+]^\top
+\in\mathbb R^{d_A}.
+\label{eq:prior_posterior_coefficient_vectors}
+\end{align}
+The projected observation embedding is expanded as
+\begin{align}
+\psi_t^\Pi
+=
+\sum_{j=1}^{d_B}
+b_{j,t}\,\omega_j,
+\qquad
+\vb_t
+=
+[b_{1,t},\dots,b_{d_B,t}]^\top
+\in\mathbb R^{d_B}.
+\label{eq:observation_galerkin_expansion_revised}
+\end{align}
+The coordinates $\va_t^-$ and $\va_t^+$ are not point-valued latent
+states. They are relaxed Galerkin coordinates of projected prior and
+posterior conditional mean embeddings. In general, not every vector in
+$\mathbb R^{d_A}$ corresponds to the projected mean embedding of a
+valid probability law. We therefore optimize over the relaxed Galerkin
+space rather than imposing hard probability-simplex or positivity
+constraints.
+
+The observation feature coefficients are constructed through a
+two-stage observation path. First, a time-invariant encoder maps the raw
+observation to an encoder feature,
+\begin{align}
+\vm_t
+=
+u_\eta(\vy(t))
+\in\mathbb R^m.
+\label{eq:encoder_feature_revised}
+\end{align}
+Second, an observation dictionary maps this encoder feature to the
+Galerkin coordinate of the projected observation embedding,
+\begin{align}
+\vb_t
+=
+\psi_\omega(\vm_t)
+=
+\psi_\omega(u_\eta(\vy(t)))
+\in\mathbb R^{d_B}.
+\label{eq:observation_dictionary_revised}
+\end{align}
+The coordinate $\vb_t$ represents the projected empirical observation
+embedding $\psi_t^\Pi=P_B\psi_y(\vy(t))$ in the chosen observation
+trial space. The two-stage path is retained because the operator
+learning problem is posed in the observation-embedding coordinates
+$\vb_t$, whereas the final prediction is decoded through the encoder
+feature $\vm_t$.
+
+For a training sequence, define
+\begin{align}
+M
+&:=
+[\vm_1,\dots,\vm_T]
+\in\mathbb R^{m\times T},
+&
+B
+&:=
+[\vb_1,\dots,\vb_T]
+\in\mathbb R^{d_B\times T}.
+\label{eq:M_B_observation_matrices}
+\end{align}
+We use a centered Galerkin convention on the observation side. Let
+\begin{align}
+\bar{\vm}
+&:=
+\frac1T\sum_{t=1}^T\vm_t,
+&
+\tilde{\vm}_t
+&:=
+\vm_t-\bar{\vm},
+&
+\tilde M
+&:=
+[\tilde{\vm}_1,\dots,\tilde{\vm}_T],
+\label{eq:centered_encoder_feature_matrix}
+\\
+\bar{\vb}
+&:=
+\frac1T\sum_{t=1}^T\vb_t,
+&
+\tilde{\vb}_t
+&:=
+\vb_t-\bar{\vb},
+&
+\tilde B
+&:=
+[\tilde{\vb}_1,\dots,\tilde{\vb}_T].
+\label{eq:centered_observation_embedding_matrix}
+\end{align}
+The core embedded-state and operator-learning objective is written in
+terms of the centered observation embeddings $\tilde{\vb}_t$. The means
+$\bar{\vb}$ and $\bar{\vm}$ are stored: $\bar{\vb}$ is used to center
+new observation embeddings at test time, and $\bar{\vm}$ is restored
+before applying the decoder. This centering convention fixes a numerical
+Galerkin gauge for a linear observable operator without introducing an
+additional probabilistic assumption on the latent process.
+
+Let
+\begin{align}
+V_A
+&\in\mathbb R^{d_A\times d_A},
+&
+V_B
+&\in\mathbb R^{d_B\times d_A}
+\label{eq:finite_operator_matrices_revised}
+\end{align}
+be the coordinate matrices of the projected transfer and observable
+operators,
+\begin{align}
+V_A
+&\leftrightarrow
+\mathcal T_A:\mathcal H_A\to\mathcal H_A,
+&
+V_B
+&\leftrightarrow
+\mathcal O_B:\mathcal H_A\to\mathcal G_B.
+\label{eq:operator_matrix_correspondence}
+\end{align}
+The transfer matrix maps a posterior embedded-state coordinate at time
+$t$ to a prior embedded-state coordinate at time $t+1$, while the
+observable matrix maps an embedded-state coordinate to a projected
+observation embedding.
+
+For the latent embedded-state coordinates, define
+\begin{align}
+A^-
+&:=
+[\va_1^-,\dots,\va_T^-]
+\in\mathbb R^{d_A\times T},
+&
+A^+
+&:=
+[\va_1^+,\dots,\va_T^+]
+\in\mathbb R^{d_A\times T}.
+\label{eq:A_minus_A_plus_matrices}
+\end{align}
+The training-time latent variables are the two coefficient sequences
+$A^-$ and $A^+$. The former represents prior or predictive embedded
+beliefs, and the latter represents posterior or corrected embedded
+beliefs. They are optimized as batch variational coordinates. The
+causal filtering coordinates used for prediction are generated later by
+the learned recursion and are denoted by $\bar A^-$ and $\bar A^+$.
+
+Let
+\begin{align}
+R_B
+&\in\mathbb S_{++}^{d_B},
+&
+Q_A
+&\in\mathbb S_{++}^{d_A},
+&
+P_t^-
+&\in\mathbb S_{+}^{d_A},
+&
+P_0
+&\in\mathbb S_{++}^{d_A}
+\label{eq:finite_metric_matrices}
+\end{align}
+be the finite-dimensional metrics corresponding to
+$\mathcal R_B$, $\mathcal Q_A$, $\mathcal C_t^-$, and
+$\mathcal P_0$. We use the notation
+\begin{align}
+\|x\|_{M}^{2}
+:=
+x^\top M x.
+\label{eq:finite_weighted_norm}
+\end{align}
+If $P_t^-$ is singular or low rank, $(P_t^-)^\dagger$ denotes its
+Moore--Penrose pseudoinverse.
+
+For fixed $V_A$ and $V_B$, the finite-dimensional embedding free energy
+under the centered observation convention is
+\begin{align}
+\mathcal F_{\mathrm{emb}}
+(A^-,A^+\mid V_A,V_B)
+&=
+\frac12
+\|\va_1^- - \va_{\mathrm{init}}\|_{P_0^{-1}}^2
+\nonumber\\
+&\quad+
+\sum_{t=1}^{T}
+\left[
+\frac12
+\|\tilde{\vb}_t - V_B\va_t^+\|_{R_B^{-1}}^2
++
+\frac12
+\|\va_t^+ - \va_t^-\|_{(P_t^-)^\dagger}^2
++
+\Omega_A(\va_t^+)
+\right]
+\nonumber\\
+&\quad+
+\sum_{t=1}^{T-1}
+\frac12
+\|\va_{t+1}^- - V_A\va_t^+\|_{Q_A^{-1}}^2 .
+\label{eq:finite_embedding_free_energy}
+\end{align}
+The first term anchors the initial prior embedded-state coordinate. The
+second line is the finite-dimensional posterior-correction energy: the
+posterior coordinate must explain the centered observation embedding
+through $V_B$, while remaining close to the prior coordinate under the
+metric $(P_t^-)^\dagger$. The third line enforces transfer consistency
+between posterior and next-prior coordinates.
+
+The initial coordinate has a distinct semantic role. Ideally,
+$\va_{\mathrm{init}}$ is the Galerkin coordinate of an initial prior
+embedded state law,
+\begin{align}
+\va_{\mathrm{init}}
+\approx
+P_A\mu_{\mathrm{init}},
+\qquad
+\mu_{\mathrm{init}}
+=
+\mathbb E[\phi_x(\rvx(1))\mid \mathcal C_0],
+\label{eq:initial_prior_embedding_coordinate}
+\end{align}
+where $\mathcal C_0$ denotes information available before the first
+observation in the sequence. If a meaningful initial embedded law is
+available, its coordinate can be supplied directly to the algorithm.
+
+When such an initial embedded law is unavailable, we use the origin of
+the centered Galerkin gauge as a reference prior and set
+\begin{align}
+\va_{\mathrm{init}}=0.
+\label{eq:zero_reference_initial_coordinate}
+\end{align}
+This fallback should not be read as a claim that the true initial state
+law is represented by the zero vector. In that case, the initial term is
+a weak boundary regularization for the first prior coordinate. Its
+strength is controlled by the metric $P_0$.
+
+The optional term $\Omega_A$ is used only when additional coordinate
+regularization is desired. In the main formulation, we take
+\begin{align}
+\Omega_A(\va)=0.
+\label{eq:default_omega_A_zero}
+\end{align}
+This choice leaves the coordinate variables as relaxed Galerkin
+representatives of projected mean embeddings. Stronger validity
+constraints, such as nonnegative or simplex constraints on atom weights,
+are not part of the main method.
+
+The metrics $R_B$, $Q_A$, $P_t^-$, and $P_0$ specify the geometry of
+the embedding discrepancies. They are not introduced as covariance
+parameters of a linear-Gaussian latent state-space model. In the main
+fixed-metric formulation, we use scalar metrics
+\begin{align}
+R_B
+&=
+\sigma_B^2 I_{d_B},
+&
+Q_A
+&=
+\sigma_A^2 I_{d_A},
+&
+P_t^-
+&=
+p I_{d_A},
+&
+P_0
+&=
+c_0p I_{d_A}.
+\label{eq:fixed_scalar_metrics}
+\end{align}
+The scalars $\sigma_B^2$, $\sigma_A^2$, $p$, and $c_0$ are
+user-specified hyperparameters held fixed during the core optimization.
+Equivalently, the first three scalars define the loss weights
+\begin{align}
+w_B
+=
+\sigma_B^{-2},
+\qquad
+w_P
+=
+p^{-1},
+\qquad
+w_A
+=
+\sigma_A^{-2}.
+\label{eq:fixed_metric_loss_weights}
+\end{align}
+The parameter $c_0$ controls the strength of the initial anchor. When
+$\va_{\mathrm{init}}$ is supplied from a meaningful initial embedded
+law, $c_0$ reflects the confidence assigned to that initial law. When
+$\va_{\mathrm{init}}=0$ is used only as a reference prior in the
+centered Galerkin gauge, the anchor should be interpreted as weak
+boundary regularization.
+
+Residual-calibrated metrics and KKR-style covariance or
+inverse-curvature recursions may be introduced as metric variants. They
+modify the geometry of the embedding free energy and the correction
+gain, but they do not change the statistical target.
+
+The operator matrices $V_A$ and $V_B$ are not treated as arbitrary
+neural layers. They are Galerkin representations of projected
+conditional operators and are estimated by separate ridge-regularized
+operator subproblems. Consequently, the Hilbert--Schmidt or Frobenius
+regularization on $V_A$ and $V_B$ is attached to those operator
+subproblems, rather than being added as an additional penalty inside
+\eqref{eq:finite_embedding_free_energy}. This separation mirrors the
+operator-learning structure of DSE while replacing its CCA-based state
+construction by the embedded-state inference objective above.
+
+
+
+
+
+\section{Core Learning Algorithm}
+\label{sec:core_learning_algorithm}
+
+This section gives the training-time algorithm for minimizing the
+finite-dimensional embedding free energy in
+\eqref{eq:finite_embedding_free_energy}. The core solver estimates the
+training-time variational coordinate arrays $A^-$ and $A^+$ together
+with the projected transfer and observable operators $V_A$ and $V_B$.
+The coordinates are optimized in batch and are assigned
+prior/posterior embedded-belief semantics through the objective; the
+causal filtering coordinates used for prediction are generated later by
+the learned recursion.
+
+The encoder $u_\eta$ and the observation dictionary $\psi_\omega$ are
+held fixed in this core block. Thus, the core solver operates on a fixed
+centered observation-embedding matrix $\tilde B$. Raw-observation
+prediction, decoder fitting, and any controlled refinement of the
+encoder or dictionary are introduced only after the embedded-state and
+operator-learning block has been estimated.
+
+\subsection{Observation Features}
+
+Given observations $\{\vy(t)\}_{t=1}^T$, compute encoder features and
+observation-embedding coordinates by
+\begin{align}
+\vm_t
+&=
+u_\eta(\vy(t)),
+&
+\vb_t
+&=
+\psi_\omega(\vm_t).
+\label{eq:core_observation_features}
+\end{align}
+The two-stage observation path is retained because the core
+operator-learning problem is posed in the observation-embedding
+coordinates $\vb_t$, whereas the final prediction is decoded through
+the encoder-feature coordinates $\vm_t$.
+
+Stack the encoder features and observation embeddings as
+\begin{align}
+M
+&=
+[\vm_1,\dots,\vm_T]
+\in\mathbb R^{m\times T},
+&
+B
+&=
+[\vb_1,\dots,\vb_T]
+\in\mathbb R^{d_B\times T}.
+\label{eq:core_M_B_matrices}
+\end{align}
+The core solver uses centered training targets. Define
+\begin{align}
+\bar{\vm}
+&=
+\frac1T\sum_{t=1}^T \vm_t,
+&
+\tilde{\vm}_t
+&=
+\vm_t-\bar{\vm},
+&
+\tilde M
+&=
+[\tilde{\vm}_1,\dots,\tilde{\vm}_T],
+\label{eq:core_centered_M_matrix}
+\\
+\bar{\vb}
+&=
+\frac1T\sum_{t=1}^T \vb_t,
+&
+\tilde{\vb}_t
+&=
+\vb_t-\bar{\vb},
+&
+\tilde B
+&=
+[\tilde{\vb}_1,\dots,\tilde{\vb}_T].
+\label{eq:core_centered_B_matrix}
+\end{align}
+The matrix $\tilde B$ is the fixed observation target used in the
+embedded-state and operator-learning block. The means $\bar{\vb}$ and
+$\bar{\vm}$ are stored. The former is used to center observation
+embeddings at test time, and the latter is restored before applying the
+decoder in the raw-prediction stage.
+
+\subsection{Initialization of Embedded-State Coordinates}
+
+Since the true latent states $\vx(t)$ are not observed, the
+embedded-state coordinate arrays cannot be initialized from latent-state
+samples. The arrays $A^{+,(0)}$ and $A^{-,(0)}$ are numerical seeds for
+the alternating minimization of the embedding free energy. They are not
+statistical estimators of the prior or posterior embedded beliefs, and
+they do not define the latent state-coordinate system.
+
+The observation embedding matrix $\tilde B$ is not used to define the
+latent coordinates. It enters the learning problem through the
+observation-consistency and correction terms in the embedding free
+energy. Thus, the prior/posterior embedded-belief interpretation of
+$A^-$ and $A^+$ is imposed by the objective and by the learned
+prediction--correction recursion, not by the numerical initializer.
+
+The main formulation only requires a nondegenerate numerical seed for
+$A^{+,(0)}$ and $A^{-,(0)}$ so that the alternating solver can start.
+The concrete choice of this seed is part of the implementation protocol.
+It may be randomized, deterministic, or supplied externally, but it
+should not be interpreted as a state-construction principle. In
+particular, the main formulation does not use DSE CCA coordinates,
+stochastic-realization coordinates, or a spectral decomposition of
+$\tilde B$ as the definition of the embedded-state coordinates.
+
+\subsection{Metric Choices}
+
+The core objective is defined for general positive definite metrics
+$R_B$ and $Q_A$ and positive semi-definite prior metrics $P_t^-$. The
+metric $P_0$ controls the boundary anchor for the first prior
+coordinate. In the main fixed-metric formulation, we use scalar metrics
+\begin{align}
+R_B
+&=
+\sigma_B^2 I_{d_B},
+&
+Q_A
+&=
+\sigma_A^2 I_{d_A},
+&
+P_t^-
+&=
+p I_{d_A},
+&
+P_0
+&=
+c_0p I_{d_A}.
+\label{eq:core_fixed_metrics}
+\end{align}
+The scalars $\sigma_B^2$, $\sigma_A^2$, $p$, and $c_0$ are
+user-specified hyperparameters held fixed during the core coordinate
+optimization. Equivalently, the first three scalars define the loss
+weights
+\begin{align}
+w_B
+=
+\sigma_B^{-2},
+\qquad
+w_P
+=
+p^{-1},
+\qquad
+w_A
+=
+\sigma_A^{-2}.
+\label{eq:core_loss_weights}
+\end{align}
+These quantities specify the geometry and relative weighting of the
+embedding discrepancies. They are not learned covariance parameters of
+a linear-Gaussian latent state-space model.
+
+The residual-calibrated variant updates $R_B$ and $Q_A$ from empirical
+residuals
+\begin{align}
+\rho_t
+&=
+\tilde{\vb}_t - V_B\va_t^+,
+&
+\epsilon_t
+&=
+\va_{t+1}^- - V_A\va_t^+.
+\label{eq:residual_definitions_metric}
+\end{align}
+For example, a diagonal residual-calibrated variant uses
+\begin{align}
+R_B
+&=
+\operatorname{diag}
+\left(
+\frac1T
+\sum_{t=1}^T
+\rho_t\rho_t^\top
+\right)
++
+\varepsilon_R I,
+\label{eq:RB_diagonal_calibration}
+\\
+Q_A
+&=
+\operatorname{diag}
+\left(
+\frac1{T-1}
+\sum_{t=1}^{T-1}
+\epsilon_t\epsilon_t^\top
+\right)
++
+\varepsilon_Q I.
+\label{eq:QA_diagonal_calibration}
+\end{align}
+Such calibration is performed in an outer loop, and the metrics are held
+fixed during each coordinate-minimization step. A KKR-style
+metric-recursive variant may also update $P_t^-$ through a covariance or
+inverse-curvature recursion. These variants change the metric geometry
+of the embedding free energy and the correction gain, but not the
+statistical target.
+
+\subsection{Coordinate Updates for Fixed Operators}
+
+For fixed $V_A$, $V_B$, and metrics, the coordinate variables
+$A^-$ and $A^+$ are updated by block coordinate minimization of
+\eqref{eq:finite_embedding_free_energy}. In the main formulation we take
+$\Omega_A=0$.
+
+\paragraph{Posterior-coordinate update.}
+For fixed $A^-$, $V_A$, and $V_B$, each posterior coordinate $\va_t^+$
+solves a linear system
+\begin{align}
+H_t^+ \va_t^+
+=
+h_t^+,
+\label{eq:Aplus_update_system}
+\end{align}
+where
+\begin{align}
+H_t^+
+&=
+V_B^\top R_B^{-1}V_B
++
+(P_t^-)^\dagger
++
+\mathbf 1_{\{t<T\}}
+V_A^\top Q_A^{-1}V_A,
+\label{eq:Aplus_update_H}
+\\
+h_t^+
+&=
+V_B^\top R_B^{-1}\tilde{\vb}_t
++
+(P_t^-)^\dagger \va_t^-
++
+\mathbf 1_{\{t<T\}}
+V_A^\top Q_A^{-1}\va_{t+1}^-.
+\label{eq:Aplus_update_h}
+\end{align}
+Thus,
+\begin{align}
+\va_t^+
+=
+(H_t^+)^{-1}h_t^+.
+\label{eq:Aplus_update_closed_form}
+\end{align}
+This update balances centered observation consistency, prior-to-posterior
+proximity, and the ability of the posterior coordinate to predict the
+next prior coordinate.
+
+\paragraph{Prior-coordinate update.}
+For fixed $A^+$ and $V_A$, each prior coordinate $\va_t^-$ is updated
+from the terms involving the correction energy and the transfer
+consistency. At the first time index, there is no previous posterior
+coordinate to propagate, and the initial-prior anchor is used:
+\begin{align}
+H_1^- \va_1^-
+&=
+h_1^-,
+\label{eq:Aminus_initial_system}
+\\
+H_1^-
+&=
+(P_1^-)^\dagger
++
+P_0^{-1},
+\label{eq:Aminus_initial_H}
+\\
+h_1^-
+&=
+(P_1^-)^\dagger \va_1^+
++
+P_0^{-1}\va_{\mathrm{init}},
+\label{eq:Aminus_initial_h}
+\\
+\va_1^-
+&=
+(H_1^-)^{-1}h_1^-.
+\label{eq:Aminus_initial_update}
+\end{align}
+For $t>1$, the prior coordinate is updated by
+\begin{align}
+H_t^- \va_t^-
+=
+h_t^-,
+\label{eq:Aminus_update_system}
+\end{align}
+with
+\begin{align}
+H_t^-
+&=
+(P_t^-)^\dagger
++
+Q_A^{-1},
+\label{eq:Aminus_update_H}
+\\
+h_t^-
+&=
+(P_t^-)^\dagger \va_t^+
++
+Q_A^{-1}V_A\va_{t-1}^+.
+\label{eq:Aminus_update_h}
+\end{align}
+Hence,
+\begin{align}
+\va_t^-
+=
+(H_t^-)^{-1}h_t^-,
+\qquad
+t=2,\dots,T.
+\label{eq:Aminus_update_closed_form}
+\end{align}
+For multiple trajectories, transition terms are evaluated only on valid
+within-trajectory transitions. Each trajectory start is treated as an
+initial index and uses the same initial-prior convention.
+
+\subsection{Galerkin Operator Updates}
+
+For fixed $A^-$ and $A^+$, the transfer and observable matrices are
+updated by separate Galerkin ridge-regression subproblems.
+
+The transfer operator is estimated from the relation
+\begin{align}
+\va_{t+1}^-
+\approx
+V_A\va_t^+.
+\end{align}
+The ridge problem is
+\begin{align}
+V_A
+=
+\arg\min_{V\in\mathbb R^{d_A\times d_A}}
+\frac12
+\sum_{t=1}^{T-1}
+\|\va_{t+1}^- - V\va_t^+\|_2^2
++
+\frac{\lambda_A}{2}
+\|V\|_F^2.
+\label{eq:VA_operator_subproblem_revised}
+\end{align}
+Its closed-form solution is
+\begin{align}
+V_A
+=
+A_{2:T}^-
+(A_{1:T-1}^+)^\top
+\left(
+A_{1:T-1}^+
+(A_{1:T-1}^+)^\top
++
+\lambda_A I
+\right)^{-1}.
+\label{eq:VA_closed_form_revised}
+\end{align}
+For multiple trajectories, the matrices in this expression are formed
+only from valid within-trajectory transition pairs.
+
+The observable operator is estimated from the centered relation
+\begin{align}
+\tilde{\vb}_t
+\approx
+V_B\va_t^+.
+\end{align}
+The ridge problem is
+\begin{align}
+V_B
+=
+\arg\min_{V\in\mathbb R^{d_B\times d_A}}
+\frac12
+\sum_{t=1}^{T}
+\|\tilde{\vb}_t - V\va_t^+\|_2^2
++
+\frac{\lambda_B}{2}
+\|V\|_F^2.
+\label{eq:VB_operator_subproblem_revised}
+\end{align}
+Its closed-form solution is
+\begin{align}
+V_B
+=
+\tilde B(A^+)^\top
+\left(
+A^+(A^+)^\top
++
+\lambda_B I
+\right)^{-1}.
+\label{eq:VB_closed_form_revised}
+\end{align}
+The ridge penalties in these subproblems are the operator-regression
+regularizers. They are not added again as separate terms in the
+embedding free energy. If full non-isotropic metrics are used in the
+operator subproblems, the corresponding weighted least-squares systems
+must be solved directly or reduced to an equivalent whitened problem.
+The main core solver uses scalar or diagonal metric conventions that
+preserve the closed-form ridge structure.
+
+\subsection{Core Algorithm}
+
+Algorithm~\ref{alg:core_embedding_learning} summarizes the core learning
+procedure. During this stage, $A^-$ and $A^+$ are variational
+coordinates. They are not tied by the hard equality
+$\va_{t+1}^-=V_A\va_t^+$; instead, this relation is imposed softly
+through the transfer-consistency term. This avoids a tautological
+operator update. After learning, the same transfer relation is used
+causally to propagate filtering coordinates.
+
+\begin{algorithm}[t]
+\caption{Core Embedded-State Galerkin Learning}
+\label{alg:core_embedding_learning}
+\begin{algorithmic}[1]
+\Require Observations $\{\vy(t)\}_{t=1}^T$; fixed encoder $u_\eta$;
+fixed observation dictionary $\psi_\omega$; coordinate dimensions
+$d_A,d_B$; ridge parameters $\lambda_A,\lambda_B$; scalar metric
+hyperparameters $\sigma_B^2,\sigma_A^2,p,c_0$; optional initial prior
+coordinate $\va_{\mathrm{init}}$; number of outer iterations $K$.
+\Ensure Embedded-state coordinates $A^-,A^+$, operators $V_A,V_B$, and
+stored means $\bar{\vb},\bar{\vm}$.
+
+\State Compute $\vm_t\gets u_\eta(\vy(t))$ and
+$\vb_t\gets \psi_\omega(\vm_t)$ for $t=1,\dots,T$.
+\State Compute and store $\bar{\vm}$ and $\bar{\vb}$.
+\State Form centered variables
+$\tilde{\vm}_t\gets\vm_t-\bar{\vm}$ and
+$\tilde{\vb}_t\gets\vb_t-\bar{\vb}$.
+\State Form $\tilde B\gets[\tilde{\vb}_1,\dots,\tilde{\vb}_T]$.
+\State Set
+$R_B\gets\sigma_B^2I_{d_B}$,
+$Q_A\gets\sigma_A^2I_{d_A}$,
+$P_t^-\gets pI_{d_A}$, and
+$P_0\gets c_0pI_{d_A}$.
+\If{no meaningful initial embedded law is supplied}
+    \State Set $\va_{\mathrm{init}}\gets 0$ in the centered Galerkin gauge.
+\EndIf
+\State Provide nondegenerate numerical seeds
+$A^{+,(0)}$ and $A^{-,(0)}$ for the alternating solver.
+
+\For{$k=0,\dots,K-1$}
+    \State Update $V_A^{(k+1)}$ by Galerkin ridge regression from
+    $A_{1:T-1}^{+,(k)}$ to $A_{2:T}^{-,(k)}$.
+    \State Update $V_B^{(k+1)}$ by Galerkin ridge regression from
+    $A^{+,(k)}$ to $\tilde B$.
+    \State Update each $\va_t^{+,(k+1)}$ by solving the posterior
+    coordinate normal equations.
+    \State Update each $\va_t^{-,(k+1)}$ by solving the prior
+    coordinate normal equations with the initial-prior anchor at
+    $t=1$.
+    \State Evaluate and record the embedding free-energy components.
+\EndFor
+
+\State \Return $A^{-,(K)}$, $A^{+,(K)}$, $V_A^{(K)}$, $V_B^{(K)}$,
+$\bar{\vb}$, and $\bar{\vm}$.
+\end{algorithmic}
+\end{algorithm}
+
+\section{Test-Time Causal Filtering and Prediction}
+\label{sec:test_time_filtering_prediction}
+
+The coordinates $A^-$ and $A^+$ estimated in
+Algorithm~\ref{alg:core_embedding_learning} are training-time
+variational coordinates. They are optimized jointly with the projected
+operators under the embedding free energy. At prediction time, however,
+one does not optimize an entire coordinate sequence. Instead, the
+learned operators are used recursively to produce causal prior and
+posterior embedded-state coordinates.
+
+To distinguish the causal filtering path from the training-time
+variational coordinates, we write
+\begin{align}
+\bar{\va}_t^-,
+\qquad
+\bar{\va}_t^+
+\end{align}
+for the causal prior and posterior coordinates. Here
+$\bar{\va}_t^-$ is the embedded-state coordinate before incorporating
+$\vy(t)$, and $\bar{\va}_t^+$ is the corrected coordinate after the
+observation at time $t$ has been incorporated. This path is generated
+using the same centered observation convention and the same initial
+prior coordinate as in the core formulation.
+
+\subsection{Causal Filtering Recursion}
+
+The filtering recursion is initialized by the initial prior coordinate
+\begin{align}
+\bar{\va}_1^-
+=
+\va_{\mathrm{init}}.
+\label{eq:test_initial_prior_coordinate}
+\end{align}
+Ideally, $\va_{\mathrm{init}}$ is supplied as the Galerkin coordinate of
+a meaningful initial embedded state law. When such an initial law is not
+available, the origin of the centered Galerkin gauge is used as a
+reference prior. This fallback is a boundary convention, not a claim
+that the true initial state law is represented by the zero vector.
+
+At each time step, the observation is mapped through the fixed encoder
+and observation dictionary,
+\begin{align}
+\vm_t
+&=
+u_\eta(\vy(t)),
+&
+\vb_t
+&=
+\psi_\omega(\vm_t),
+\label{eq:test_observation_feature}
+\end{align}
+and then centered using the training mean stored after feature
+preparation:
+\begin{align}
+\tilde{\vb}_t
+=
+\vb_t-\bar{\vb}.
+\label{eq:test_centered_observation_feature}
+\end{align}
+The test sequence mean is not used for this centering.
+
+Given the prior coordinate $\bar{\va}_t^-$, the centered observation
+prediction and innovation are
+\begin{align}
+\widehat{\tilde{\vb}}_{t|t-1}
+&=
+V_B\bar{\va}_t^-,
+&
+\vr_t
+&=
+\tilde{\vb}_t
+-
+V_B\bar{\va}_t^-.
+\label{eq:test_innovation}
+\end{align}
+For a fixed prior metric $P_t^-$ and observation metric $R_B$, the
+Galerkin correction gain is
+\begin{align}
+K_t
+=
+P_t^- V_B^\top
+\left(
+V_B P_t^- V_B^\top
++
+R_B
+\right)^{-1}.
+\label{eq:test_gain}
+\end{align}
+The posterior coordinate is updated by
+\begin{align}
+\bar{\va}_t^+
+=
+\bar{\va}_t^-
++
+K_t\vr_t.
+\label{eq:test_posterior_update}
+\end{align}
+Equivalently, when $\Omega_A=0$, $\bar{\va}_t^+$ is the minimizer of the
+finite-dimensional correction objective
+\begin{align}
+\bar{\va}_t^+
+=
+\arg\min_{\va\in\mathbb R^{d_A}}
+\frac12
+\|\tilde{\vb}_t-V_B\va\|_{R_B^{-1}}^2
++
+\frac12
+\|\va-\bar{\va}_t^-\|_{(P_t^-)^\dagger}^2 .
+\label{eq:test_posterior_argmin}
+\end{align}
+Thus, the correction step is a finite-dimensional embedded-belief update
+driven by a centered observation innovation.
+
+The next prior coordinate is propagated by the learned transfer
+operator,
+\begin{align}
+\bar{\va}_{t+1}^-
+=
+V_A\bar{\va}_t^+.
+\label{eq:test_prior_propagation}
+\end{align}
+In the main fixed-metric setting, $P_t^-=pI_{d_A}$ and
+$R_B=\sigma_B^2I_{d_B}$ are held fixed during the filtering pass. A
+metric-recursive variant may instead propagate
+\begin{align}
+P_t^+
+&=
+P_t^-
+-
+K_t V_B P_t^-,
+\label{eq:test_cov_update_simple}
+\\
+P_{t+1}^-
+&=
+V_A P_t^+ V_A^\top
++
+Q_A.
+\label{eq:test_cov_prediction}
+\end{align}
+For numerical stability, the Joseph-form update
+\begin{align}
+P_t^+
+=
+(I-K_tV_B)P_t^-(I-K_tV_B)^\top
++
+K_tR_BK_t^\top
+\label{eq:test_cov_update_joseph}
+\end{align}
+may be used in such a metric-recursive variant. These metric recursions
+are optional refinements of the correction geometry and do not change
+the statistical target.
+
+\subsection{Difference Between Training-Time and Test-Time Coordinates}
+
+The distinction between $(A^-,A^+)$ and
+$(\bar A^-,\bar A^+)$ is important. During training, the coordinates
+$A^-$ and $A^+$ are variational variables in the embedding free-energy
+objective. In particular, $A^-$ is not constrained by the hard equality
+$\va_{t+1}^-=V_A\va_t^+$. Instead, the transfer relation is imposed
+softly by the transfer-consistency term.
+
+At test time, by contrast, the prior coordinate is generated causally by
+\eqref{eq:test_prior_propagation}. Thus, the filtered sequence
+$\{\bar{\va}_t^-,\bar{\va}_t^+\}$ can be computed online from past
+observations and the current observation only. This distinction prevents
+the training-time variational path from being confused with a causal
+prediction path.
+
+The same convention is used when the causal path is recomputed on the
+training sequence: observations are centered using the stored training
+mean, and the path is initialized from $\va_{\mathrm{init}}$. Therefore,
+evaluation and read-out training are based on the causal path
+$\bar A^-,\bar A^+$ rather than on the batch variational coordinates
+$A^-,A^+$.
+
+\subsection{Causal Feature Prediction}
+
+After the causal filtering path has been computed, the prior coordinate
+$\bar{\va}_t^-$ provides a prediction before $\vy(t)$ is incorporated.
+Under the centered observation convention, the predicted observation
+embedding is
+\begin{align}
+\widehat{\tilde{\vb}}_{t|t-1}
+=
+V_B\bar{\va}_t^-.
+\label{eq:predicted_observation_embedding_prior}
+\end{align}
+A read-out map
+\begin{align}
+r_{\xi_B}:\mathbb R^{d_B}\to\mathbb R^m
+\label{eq:readout_map_definition}
+\end{align}
+maps this centered operator-projected observation embedding to a
+centered encoder-feature prediction:
+\begin{align}
+\widehat{\tilde{\vm}}_{t|t-1}
+=
+r_{\xi_B}\!\left(\widehat{\tilde{\vb}}_{t|t-1}\right)
+=
+r_{\xi_B}(V_B\bar{\va}_t^-).
+\label{eq:predicted_centered_encoder_feature}
+\end{align}
+The feature-level causal prediction loss is
+\begin{align}
+\mathcal L_{\mathrm{feat}}^{\mathrm{pred}}(\xi_B)
+=
+\frac1T
+\sum_{t=1}^T
+\left\|
+\tilde{\vm}_t
+-
+r_{\xi_B}(V_B\bar{\va}_t^-)
+\right\|_2^2
++
+\lambda_{r,B}\Omega(\xi_B).
+\label{eq:feature_prediction_loss}
+\end{align}
+In the feature read-out stage, the encoder $u_\eta$, observation
+dictionary $\psi_\omega$, operators $V_A,V_B$, and causal filtering path
+$\{\bar{\va}_t^-,\bar{\va}_t^+\}$ are held fixed, and only
+$r_{\xi_B}$ is trained.
+
+If $r_{\xi_B}$ is chosen to be linear, $r_{\xi_B}(h)=R_{\xi_B}h$, the
+feature read-out can be estimated by ridge regression. Let
+\begin{align}
+H^-
+&=
+[V_B\bar{\va}_1^-,\dots,V_B\bar{\va}_T^-]
+\in\mathbb R^{d_B\times T},
+&
+\tilde M
+&=
+[\tilde{\vm}_1,\dots,\tilde{\vm}_T]
+\in\mathbb R^{m\times T}.
+\label{eq:readout_design_matrices}
+\end{align}
+Then
+\begin{align}
+R_{\xi_B}
+=
+\tilde M(H^-)^\top
+\left(
+H^-(H^-)^\top
++
+\lambda_{r,B}I
+\right)^{-1}.
+\label{eq:linear_readout_solution}
+\end{align}
+A nonlinear read-out, such as an MLP, may also be used. In that case,
+\eqref{eq:feature_prediction_loss} is minimized by gradient descent
+while the core operator-learning block remains fixed.
+
+\subsection{Raw Observation Prediction}
+
+After the feature-level read-out has been aligned, the centered feature
+prediction is mapped back to the original encoder-feature coordinate
+system by restoring the training mean:
+\begin{align}
+\hat{\vm}_{t|t-1}
+=
+\bar{\vm}
++
+\widehat{\tilde{\vm}}_{t|t-1}
+=
+\bar{\vm}
++
+r_{\xi_B}(V_B\bar{\va}_t^-).
+\label{eq:mean_restored_predicted_feature}
+\end{align}
+A decoder $g_\alpha:\mathbb R^m\to\mathcal Y$ then maps this predicted
+encoder feature to the raw observation space:
+\begin{align}
+\hat{\vy}_{t|t-1}
+=
+g_\alpha(\hat{\vm}_{t|t-1})
+=
+g_\alpha\!\left(
+\bar{\vm}
++
+r_{\xi_B}(V_B\bar{\va}_t^-)
+\right).
+\label{eq:raw_prediction}
+\end{align}
+The raw causal prediction loss is
+\begin{align}
+\mathcal L_{\mathrm{raw}}^{\mathrm{pred}}(\xi_B,\alpha)
+=
+\frac1T
+\sum_{t=1}^T
+d_{\mathcal Y}
+\left(
+\vy(t),
+g_\alpha\!\left(
+\bar{\vm}
++
+r_{\xi_B}(V_B\bar{\va}_t^-)
+\right)
+\right)
++
+\lambda_g\Omega(\alpha)
++
+\lambda_{r,B}\Omega(\xi_B),
+\label{eq:raw_prediction_loss}
+\end{align}
+where $d_{\mathcal Y}$ is a task-dependent prediction loss in the
+observation space.
+
+The raw-level loss is combined with the centered feature-level anchor:
+\begin{align}
+\mathcal L_{\mathrm{dec}}^{\mathrm{pred}}
+=
+\mathcal L_{\mathrm{raw}}^{\mathrm{pred}}
++
+\lambda_m
+\mathcal L_{\mathrm{feat}}^{\mathrm{pred}}.
+\label{eq:decoder_prediction_loss_with_feature_anchor}
+\end{align}
+The feature anchor keeps the read-out aligned with the encoder-feature
+space and prevents the decoder from absorbing arbitrary changes in the
+read-out representation.
+
+\subsection{No Posterior Reconstruction in the Main Algorithm}
+
+The main prediction path uses $\bar{\va}_t^-$, not $\bar{\va}_t^+$. This
+is because $\bar{\va}_t^-$ is computed before incorporating $\vy(t)$,
+whereas $\bar{\va}_t^+$ already incorporates the centered observation
+embedding $\tilde{\vb}_t$. A reconstruction based on
+$V_B\bar{\va}_t^+$ is therefore a same-time posterior reconstruction in
+the centered observation-embedding space, not a causal one-step-ahead
+prediction.
+
+Such a posterior reconstruction may be recorded as a diagnostic quantity
+or studied in a separate ablation, but it is not part of the main
+prediction path. The main read-out and decoder learning objective is
+based on
+\begin{align}
+V_B\bar{\va}_t^-
+\quad\longrightarrow\quad
+\widehat{\tilde{\vm}}_{t|t-1}
+\quad\longrightarrow\quad
+\hat{\vm}_{t|t-1}
+\quad\longrightarrow\quad
+\hat{\vy}_{t|t-1}.
+\label{eq:main_causal_prediction_path}
+\end{align}
+
+\subsection{Summary of the Staged Prediction Block}
+
+The causal prediction block proceeds in two stages:
+\begin{enumerate}
+\item \textbf{Feature-level read-out.}
+Train $r_{\xi_B}$ to predict centered encoder features from the
+operator prediction $V_B\bar{\va}_t^-$ using
+\eqref{eq:feature_prediction_loss}.
+\item \textbf{Raw-level prediction.}
+Restore the encoder-feature mean and train $r_{\xi_B}$ and $g_\alpha$
+to predict raw observations using
+\eqref{eq:decoder_prediction_loss_with_feature_anchor}. Initially,
+$g_\alpha$ may be held fixed and only $r_{\xi_B}$ trained; after the
+feature-level alignment stabilizes, $r_{\xi_B}$ and $g_\alpha$ may be
+refined together.
+\end{enumerate}
+The encoder $u_\eta$ and dictionary $\psi_\omega$ remain fixed in the
+main formulation. Updating them changes the observation embeddings and
+therefore requires a separate controlled refinement stage with
+recomputation of the centered variables and periodic re-estimation of
+$A^-$, $A^+$, $V_A$, and $V_B$.
+
+\section{Staged Training Summary and Optional Refinement}
+\label{sec:staged_training_summary}
+
+The proposed method is trained in stages. This staged design is important
+because the embedded-state inference block, the Galerkin operator
+estimation block, and the raw-observation decoder block have different
+roles. In particular, the projected operators $V_A$ and $V_B$ should be
+estimated as Galerkin conditional-operator regressions rather than
+absorbed into an unconstrained end-to-end neural predictor.
+
+The main algorithm consists of Phases 0--3 below. An additional
+controlled refinement phase may be used after the main algorithm has
+converged, but it is not part of the core method.
+
+\subsection{Phase 0: Feature Preparation}
+
+The raw observations are first mapped to encoder features and
+observation-embedding coordinates:
+\begin{align}
+\vm_t
+&=
+u_\eta(\vy(t)),
+&
+\vb_t
+&=
+\psi_\omega(\vm_t).
+\label{eq:phase0_features}
+\end{align}
+The encoder $u_\eta$ and decoder $g_\alpha$ may be initialized by a
+standard autoencoder loss,
+\begin{align}
+\mathcal L_{\mathrm{AE}}(\eta,\alpha)
+=
+\frac1T
+\sum_{t=1}^T
+d_{\mathcal Y}
+\left(
+\vy(t),
+g_\alpha(u_\eta(\vy(t)))
+\right),
+\label{eq:phase0_autoencoder_loss}
+\end{align}
+although this pretraining is not part of the embedding free-energy
+objective.
+
+After the features are computed, store the training means
+\begin{align}
+\bar{\vm}
+&=
+\frac1T\sum_{t=1}^T\vm_t,
+&
+\bar{\vb}
+&=
+\frac1T\sum_{t=1}^T\vb_t,
+\label{eq:phase0_training_means}
+\end{align}
+and form centered variables
+\begin{align}
+\tilde{\vm}_t
+&=
+\vm_t-\bar{\vm},
+&
+\tilde{\vb}_t
+&=
+\vb_t-\bar{\vb}.
+\label{eq:phase0_centered_features}
+\end{align}
+The matrix
+\begin{align}
+\tilde B
+=
+[\tilde{\vb}_1,\dots,\tilde{\vb}_T]
+\label{eq:phase0_centered_B}
+\end{align}
+is the fixed observation-embedding target used in the core learning
+stage. The encoder $u_\eta$ and dictionary $\psi_\omega$ are held fixed
+during that stage.
+
+\subsection{Phase 1: Embedded-State and Operator Learning}
+
+Given the fixed centered observation-embedding matrix $\tilde B$, the
+prior and posterior embedded-state coordinates $A^-$ and $A^+$ are
+estimated by minimizing the finite-dimensional embedding free energy
+\eqref{eq:finite_embedding_free_energy}. The projected transfer and
+observable operators are updated by the Galerkin ridge-regression
+subproblems \eqref{eq:VA_operator_subproblem_revised} and
+\eqref{eq:VB_operator_subproblem_revised}.
+
+This phase is the core of the proposed method. It replaces the
+CCA-based state construction used in DSE by a variational
+embedded-state coordinate learning problem. No inference encoder and no
+DSE CCA state warm start are used. The state coordinates are learned
+directly as relaxed Galerkin coordinates with intended prior and
+posterior embedded-belief semantics.
+
+The output of Phase 1 is
+\begin{align}
+A^-,
+\qquad
+A^+,
+\qquad
+V_A,
+\qquad
+V_B,
+\qquad
+R_B,
+\qquad
+Q_A,
+\qquad
+\{P_t^-\}_{t=1}^T,
+\qquad
+P_0,
+\qquad
+\va_{\mathrm{init}},
+\qquad
+\bar{\vb},
+\qquad
+\bar{\vm}.
+\label{eq:phase1_outputs}
+\end{align}
+In the main fixed-metric setting, the metrics are scalar matrices held
+fixed during the core optimization. Residual-calibrated and
+metric-recursive variants may be considered as extensions of the metric
+geometry.
+
+\subsection{Phase 2: Causal Filtering Path Construction}
+
+The training-time coordinates $A^-$ and $A^+$ are variational variables.
+They are not themselves used as the main prediction path. After the
+operators have been learned, we recompute a causal filtering path using
+the same recursion that will be used at prediction time.
+
+The path is initialized by
+\begin{align}
+\bar{\va}_1^-
+=
+\va_{\mathrm{init}}.
+\label{eq:phase2_initial_prior}
+\end{align}
+For each time index, use the centered observation embedding
+$\tilde{\vb}_t=\vb_t-\bar{\vb}$ and define
+\begin{align}
+\bar{\va}_t^+
+&=
+\bar{\va}_t^-
++
+K_t
+\left(
+\tilde{\vb}_t - V_B\bar{\va}_t^-
+\right),
+\label{eq:phase2_posterior}
+\\
+\bar{\va}_{t+1}^-
+&=
+V_A\bar{\va}_t^+.
+\label{eq:phase2_prior}
+\end{align}
+Here $K_t$ is the Galerkin correction gain defined in
+\eqref{eq:test_gain}. In the main fixed-metric setting, $P_t^-=pI$ is
+held fixed. In a metric-recursive variant, $P_t^-$ and $P_t^+$ may be
+updated by \eqref{eq:test_cov_update_simple}--\eqref{eq:test_cov_prediction}
+or by the Joseph form \eqref{eq:test_cov_update_joseph}.
+
+The resulting sequence
+\begin{align}
+\bar A^-
+&=
+[\bar{\va}_1^-,\dots,\bar{\va}_T^-],
+&
+\bar A^+
+&=
+[\bar{\va}_1^+,\dots,\bar{\va}_T^+]
+\label{eq:phase2_filtered_paths}
+\end{align}
+is the causal filtered coordinate sequence associated with the learned
+operators. It is distinct from the training-time variational coordinates
+$A^-$ and $A^+$ and is the path used for prediction and read-out
+training.
+
+\subsection{Phase 3: Causal Read-Out and Decoder Learning}
+
+The main prediction path uses the prior coordinate $\bar{\va}_t^-$,
+which is computed before incorporating $\vy(t)$. Under the centered
+observation convention, the predicted observation embedding is
+\begin{align}
+\widehat{\tilde{\vb}}_{t|t-1}
+=
+V_B\bar{\va}_t^-.
+\label{eq:phase3_predicted_embedding}
+\end{align}
+A read-out map $r_{\xi_B}$ maps this operator-projected embedding to a
+centered encoder-feature prediction:
+\begin{align}
+\widehat{\tilde{\vm}}_{t|t-1}
+=
+r_{\xi_B}(V_B\bar{\va}_t^-).
+\label{eq:phase3_predicted_feature}
+\end{align}
+The feature-level causal prediction loss is
+\begin{align}
+\mathcal L_{\mathrm{feat}}^{\mathrm{pred}}(\xi_B)
+=
+\frac1T
+\sum_{t=1}^T
+\left\|
+\tilde{\vm}_t
+-
+r_{\xi_B}(V_B\bar{\va}_t^-)
+\right\|_2^2
++
+\lambda_{r,B}\Omega(\xi_B).
+\label{eq:phase3_feature_loss}
+\end{align}
+This loss aligns the operator-predicted centered observation embedding
+with the centered encoder-feature space.
+
+Before decoding, the encoder-feature mean is restored:
+\begin{align}
+\hat{\vm}_{t|t-1}
+=
+\bar{\vm}
++
+\widehat{\tilde{\vm}}_{t|t-1}
+=
+\bar{\vm}
++
+r_{\xi_B}(V_B\bar{\va}_t^-).
+\label{eq:phase3_mean_restored_feature}
+\end{align}
+The decoder then maps the predicted feature to the raw observation
+space:
+\begin{align}
+\hat{\vy}_{t|t-1}
+=
+g_\alpha\!\left(
+\bar{\vm}
++
+r_{\xi_B}(V_B\bar{\va}_t^-)
+\right).
+\label{eq:phase3_raw_prediction}
+\end{align}
+The raw causal prediction loss is
+\begin{align}
+\mathcal L_{\mathrm{raw}}^{\mathrm{pred}}(\xi_B,\alpha)
+=
+\frac1T
+\sum_{t=1}^T
+d_{\mathcal Y}
+\left(
+\vy(t),
+g_\alpha\!\left(
+\bar{\vm}
++
+r_{\xi_B}(V_B\bar{\va}_t^-)
+\right)
+\right)
++
+\lambda_g\Omega(\alpha)
++
+\lambda_{r,B}\Omega(\xi_B).
+\label{eq:phase3_raw_loss}
+\end{align}
+In practice we retain the centered feature-level anchor and use
+\begin{align}
+\mathcal L_{\mathrm{readout}}
+=
+\mathcal L_{\mathrm{raw}}^{\mathrm{pred}}
++
+\lambda_m
+\mathcal L_{\mathrm{feat}}^{\mathrm{pred}}.
+\label{eq:phase3_readout_loss}
+\end{align}
+The feature anchor prevents the decoder from absorbing arbitrary changes
+in the read-out representation.
+
+The main algorithm does not include posterior reconstruction from
+$V_B\bar{\va}_t^+$. Since $\bar{\va}_t^+$ already incorporates the
+centered observation embedding $\tilde{\vb}_t$, reconstruction from
+$V_B\bar{\va}_t^+$ is a same-time posterior reconstruction rather than a
+causal prediction. Such a quantity may be recorded for diagnostics or
+studied in a separate ablation, but it is not part of the main
+formulation.
+
+\subsection{Main Algorithm Summary}
+
+The main method is summarized in
+Algorithm~\ref{alg:staged_embedding_free_energy}. It consists of
+feature preparation, core embedded-state and operator learning, causal
+filtering path construction, and causal read-out / decoder learning.
+The optional refinement described in the next subsection is not required
+for the method to be well-defined.
+
+\begin{algorithm}[t]
+\caption{Staged Embedding-Free-Energy Operator Learning}
+\label{alg:staged_embedding_free_energy}
+\begin{algorithmic}[1]
+\Require Observations $\{\vy(t)\}_{t=1}^T$, encoder $u_\eta$,
+observation dictionary $\psi_\omega$, decoder $g_\alpha$, dimensions
+$d_A,d_B$, scalar metric hyperparameters, ridge parameters.
+\Ensure Operators $V_A,V_B$, causal filtering rule, read-out
+$r_{\xi_B}$, decoder $g_\alpha$, stored means $\bar{\vb},\bar{\vm}$,
+and prediction map.
+
+\State \textbf{Phase 0: Feature preparation.}
+\State Compute $\vm_t\gets u_\eta(\vy(t))$ and
+$\vb_t\gets \psi_\omega(\vm_t)$.
+\State Compute and store training means $\bar{\vm}$ and $\bar{\vb}$.
+\State Form centered variables
+$\tilde{\vm}_t\gets\vm_t-\bar{\vm}$ and
+$\tilde{\vb}_t\gets\vb_t-\bar{\vb}$.
+\State Form $\tilde B\gets[\tilde{\vb}_1,\dots,\tilde{\vb}_T]$.
+
+\State \textbf{Phase 1: Core embedded-state / operator learning.}
+\State Provide nondegenerate numerical seeds for $A^+$ and $A^-$;
+these seeds are implementation choices and do not define the
+embedded-state coordinates.
+\State Set the initial prior coordinate $\va_{\mathrm{init}}$; if no
+meaningful initial embedded law is available, use the origin of the
+centered Galerkin gauge.
+\State Minimize the embedding free energy by alternating coordinate
+updates for $A^+$ and $A^-$ with closed-form Galerkin ridge updates for
+$V_A$ and $V_B$.
+\State Use $\tilde B$ in the observable-operator update.
+\State Optionally calibrate $R_B$ and $Q_A$ from residuals in an outer
+loop.
+
+\State \textbf{Phase 2: Causal filtering path.}
+\State Initialize $\bar{\va}_1^-\gets\va_{\mathrm{init}}$.
+\State Run the learned filtering recursion with centered innovations
+$\tilde{\vb}_t-V_B\bar{\va}_t^-$ to compute $\bar A^-$ and $\bar A^+$.
+
+\State \textbf{Phase 3: Read-out / decoder learning.}
+\State Train $r_{\xi_B}$ to predict centered encoder features
+$\tilde{\vm}_t$ using the feature-level causal prediction loss.
+\State Restore the encoder-feature mean and train $r_{\xi_B}$ and
+$g_\alpha$ using the raw causal prediction loss with feature anchor.
+
+\State \Return $V_A$, $V_B$, $r_{\xi_B}$, $g_\alpha$,
+$\bar{\vb}$, $\bar{\vm}$, and the causal filtering / prediction rule.
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Optional Controlled Refinement}
+
+The main formulation keeps $u_\eta$ and $\psi_\omega$ fixed during the
+embedded-state and operator-learning block. This preserves the meaning
+of the centered observation-embedding matrix $\tilde B$ and avoids
+co-adaptation in which the encoder absorbs temporal structure and the
+learned operators become degenerate.
+
+After the main staged procedure has converged, one may optionally refine
+the feature maps and decoder in a controlled outer loop. Such a
+refinement should not be performed as fully joint training from scratch.
+If $\psi_\omega$ or $u_\eta$ is updated, the observation embeddings
+$\vb_t=\psi_\omega(u_\eta(\vy(t)))$ change, and therefore the training
+means, centered variables, embedded-state coordinates, and operators
+must be recomputed or updated. A controlled refinement loop has the
+following form:
+\begin{enumerate}
+\item update selected neural modules, such as $r_{\xi_B}$, $g_\alpha$,
+$\psi_\omega$, or $u_\eta$, for a small number of gradient steps using
+the causal prediction loss;
+\item recompute $\bar{\vb}$, $\bar{\vm}$, $\tilde B$, and $\tilde M$ if
+$u_\eta$ or $\psi_\omega$ has changed;
+\item rerun a small number of core learning iterations to update
+$A^-$, $A^+$, $V_A$, and $V_B$;
+\item recompute the causal filtering path $\bar A^-$ and $\bar A^+$.
+\end{enumerate}
+This optional stage is a performance refinement, not part of the
+mathematical core of the method.
+
+% Acknowledgements and Disclosure of Funding should go at the end, before appendices and references
+
+\acks{
+
+}
+
+% Manual newpage inserted to improve layout of sample file - not
+% needed in general before appendices/bibliography.
+
+\newpage
+
+
+\appendix
+
+\section{Derivation of the Hilbert-Space Correction Update}
+\label{app:hilbert_correction_derivation}
+
+This appendix gives a more detailed derivation of the posterior
+correction objective used in Section~\ref{sec:statistical_objective}.
+The goal is to clarify that the update is a Hilbert-space
+residual-minimization principle for embedded beliefs, rather than a
+Gaussian likelihood assumption on finite-dimensional latent
+coordinates.
+
+\subsection{Conditional Mean Embeddings as Hilbert-Space Projections}
+
+Let
+\begin{align}
+U_t
+:=
+\phi_x(\rvx(t))
+\in
+L^2(\Omega;\mathcal H)
+\end{align}
+be the Hilbert-space valued latent feature at time $t$. Let
+\begin{align}
+\mathcal F_t
+:=
+\sigma(\rvy(1),\dots,\rvy(t))
+\end{align}
+be the observation sigma-algebra up to time $t$. The posterior embedded
+state law is the Hilbert-space valued conditional expectation
+\begin{align}
+\mu_{x,t}^{+,\star}
+=
+\mathbb E[
+U_t
+\mid
+\mathcal F_t
+].
+\end{align}
+It is characterized as the orthogonal projection of $U_t$ onto the
+closed subspace of $\mathcal F_t$-measurable Hilbert-space valued random
+variables:
+\begin{align}
+\mu_{x,t}^{+,\star}
+=
+\arg\min_{M\in L^2(\mathcal F_t;\mathcal H)}
+\mathbb E
+\left[
+\|U_t-M\|_{\mathcal H}^2
+\right].
+\label{eq:app_conditional_expectation_projection}
+\end{align}
+Similarly, the prior embedded state law is
+\begin{align}
+\mu_{x,t}^{-,\star}
+=
+\mathbb E[
+U_t
+\mid
+\mathcal F_{t-1}
+].
+\end{align}
+This exact characterization is not directly computable in our setting,
+because the latent state $\rvx(t)$ is not observed and the full
+conditional expectation space is infinite-dimensional. The proposed
+method therefore estimates the projected embedded beliefs in a finite
+Galerkin trial space by using observable embedding consistency and
+transfer consistency.
+
+\subsection{Observation Consistency}
+
+At time $t$, the observation $\vy(t)$ gives the empirical observation-law
+embedding
+\begin{align}
+\psi_y(\vy(t))
+\in \mathcal G.
+\end{align}
+Its projected Galerkin representative is
+\begin{align}
+\psi_t^\Pi
+=
+P_B\psi_y(\vy(t))
+\in \mathcal G_B.
+\end{align}
+Let
+\begin{align}
+\mathcal O_B:\mathcal H_A\to\mathcal G_B
+\end{align}
+be the projected observable operator. If $\mu\in\mathcal H_A$ is a
+candidate posterior embedded state, then $\mathcal O_B\mu$ is the
+predicted projected observation-law embedding associated with that
+candidate state. Therefore, a natural observation-consistency condition
+is
+\begin{align}
+\mathcal O_B\mu
+\approx
+\psi_t^\Pi.
+\label{eq:app_observation_consistency}
+\end{align}
+
+In an ideal noiseless and exactly represented model, one could impose
+the hard constraint
+\begin{align}
+\mathcal O_B\mu
+=
+\psi_t^\Pi.
+\label{eq:app_hard_observation_constraint}
+\end{align}
+Among all elements satisfying this constraint, the corrected embedded
+state should be as close as possible to the prior embedded state
+$\mu_t^-$. This gives the constrained projection problem
+\begin{align}
+\min_{\mu\in\mathcal H_A}
+\frac12
+\|\mu-\mu_t^-\|_{(\mathcal C_t^-)^\dagger}^2
+\quad
+\text{subject to}
+\quad
+\mathcal O_B\mu=\psi_t^\Pi.
+\label{eq:app_hard_projection_problem}
+\end{align}
+Here $\mathcal C_t^-$ is a positive semi-definite metric or
+preconditioning operator associated with the prior embedded state. It
+specifies the local geometry of the correction step: directions with
+larger uncertainty are allowed to move more, while directions with
+smaller uncertainty are more strongly constrained.
+
+The hard constraint in \eqref{eq:app_hard_projection_problem} is too
+strong in finite-dimensional learned feature spaces. The observation is
+stochastic, the Galerkin projection is approximate, and the observable
+operator is estimated from data. We therefore relax
+\eqref{eq:app_hard_projection_problem} into the Tikhonov-regularized
+problem
+\begin{align}
+\mu_t^+
+=
+\arg\min_{\mu\in\mathcal H_A}
+\frac12
+\|\psi_t^\Pi-\mathcal O_B\mu\|_{\mathcal R_B^{-1}}^2
++
+\frac12
+\|\mu-\mu_t^-\|_{(\mathcal C_t^-)^\dagger}^2
++
+\Omega_A(\mu).
+\label{eq:app_tikhonov_correction_objective}
+\end{align}
+The first term penalizes violation of the observation-consistency
+condition. The second term is a prior-to-posterior proximal penalty in
+the embedded-state space. The optional term $\Omega_A$ may be used for
+additional coordinate regularization. In the main formulation,
+$\Omega_A=0$.
+
+The metrics $\mathcal R_B$ and $\mathcal C_t^-$ should not be interpreted
+as requiring a Gaussian latent state-space model. They specify the
+geometry of the embedding residual and the correction step. Thus
+\eqref{eq:app_tikhonov_correction_objective} is a loss-based
+Hilbert-space update for embedded beliefs, not a negative log density of
+an explicit parametric latent model.
+
+\subsection{Normal Equation and Innovation Form}
+
+Assume $\Omega_A=0$. The objective in
+\eqref{eq:app_tikhonov_correction_objective} becomes
+\begin{align}
+J_t(\mu)
+=
+\frac12
+\|\psi_t^\Pi-\mathcal O_B\mu\|_{\mathcal R_B^{-1}}^2
++
+\frac12
+\|\mu-\mu_t^-\|_{(\mathcal C_t^-)^\dagger}^2.
+\label{eq:app_quadratic_correction_objective}
+\end{align}
+Taking the first variation gives
+\begin{align}
+-
+\mathcal O_B^\ast
+\mathcal R_B^{-1}
+\left(
+\psi_t^\Pi-\mathcal O_B\mu
+\right)
++
+(\mathcal C_t^-)^\dagger
+(\mu-\mu_t^-)
+=
+0.
+\label{eq:app_first_variation}
+\end{align}
+Thus the minimizer satisfies the normal equation
+\begin{align}
+\left(
+\mathcal O_B^\ast
+\mathcal R_B^{-1}
+\mathcal O_B
++
+(\mathcal C_t^-)^\dagger
+\right)
+\mu_t^+
+=
+\mathcal O_B^\ast
+\mathcal R_B^{-1}
+\psi_t^\Pi
++
+(\mathcal C_t^-)^\dagger
+\mu_t^-.
+\label{eq:app_normal_equation_hilbert}
+\end{align}
+Equivalently, on the subspaces where the relevant inverses are
+well-defined, the solution can be written in innovation form:
+\begin{align}
+\mu_t^+
+&=
+\mu_t^-
++
+\mathcal K_t
+\left(
+\psi_t^\Pi-\mathcal O_B\mu_t^-
+\right),
+\label{eq:app_innovation_form_hilbert}
+\\
+\mathcal K_t
+&=
+\mathcal C_t^-
+\mathcal O_B^\ast
+\left(
+\mathcal O_B\mathcal C_t^-\mathcal O_B^\ast
++
+\mathcal R_B
+\right)^{-1}.
+\label{eq:app_gain_hilbert}
+\end{align}
+This follows by applying the Woodbury identity to
+\eqref{eq:app_normal_equation_hilbert}. The residual
+\begin{align}
+\psi_t^\Pi-\mathcal O_B\mu_t^-
+\end{align}
+is the projected observation innovation, and $\mathcal K_t$ is the
+Hilbert-space correction gain.
+
+This is the precise sense in which the update is KKR-like: it has a
+prior embedded belief, an observation innovation, and a gain determined
+by a residual metric and a prior update metric. However, the update is
+not presented as an exact kernel Bayes rule and is not derived from a
+Gaussian density over the Galerkin coordinates.
+
+\subsection{Finite-Dimensional Coordinate Form}
+
+Let
+\begin{align}
+\mu_t^-
+&=
+\sum_{i=1}^{d_A} a_{i,t}^- \chi_i,
+&
+\mu_t^+
+&=
+\sum_{i=1}^{d_A} a_{i,t}^+ \chi_i.
+\end{align}
+On the observation side, the main formulation uses the centered
+Galerkin convention. Thus, if
+\begin{align}
+\psi_t^\Pi
+=
+\sum_{j=1}^{d_B} b_{j,t}\omega_j
+\end{align}
+is the projected observation embedding, its centered coordinate is
+denoted by
+\begin{align}
+\tilde{\vb}_t
+=
+\vb_t-\bar{\vb}.
+\end{align}
+The finite-dimensional correction objective corresponding to
+\eqref{eq:app_tikhonov_correction_objective} is
+\begin{align}
+\va_t^+
+=
+\arg\min_{\va\in\mathbb R^{d_A}}
+\frac12
+\|\tilde{\vb}_t-V_B\va\|_{R_B^{-1}}^2
++
+\frac12
+\|\va-\va_t^-\|_{(P_t^-)^\dagger}^2
++
+\Omega_A(\va).
+\label{eq:app_finite_correction_objective}
+\end{align}
+When $\Omega_A=0$, the finite-dimensional normal equation is
+\begin{align}
+\left(
+V_B^\top R_B^{-1}V_B
++
+(P_t^-)^\dagger
+\right)
+\va_t^+
+=
+V_B^\top R_B^{-1}\tilde{\vb}_t
++
+(P_t^-)^\dagger\va_t^-.
+\label{eq:app_finite_normal_equation}
+\end{align}
+The corresponding innovation form is
+\begin{align}
+\va_t^+
+&=
+\va_t^-
++
+K_t
+\left(
+\tilde{\vb}_t-V_B\va_t^-
+\right),
+\label{eq:app_finite_innovation}
+\\
+K_t
+&=
+P_t^-V_B^\top
+\left(
+V_BP_t^-V_B^\top+R_B
+\right)^{-1}.
+\label{eq:app_finite_gain}
+\end{align}
+This is the correction step used in the causal filtering recursion. The
+use of $\tilde{\vb}_t$ reflects the centered Galerkin coordinate
+convention; it is not an additional probabilistic assumption on the
+latent process.
+
+
+\section{Coordinate-Update Derivations}
+\label{app:coordinate_update_derivations}
+
+This appendix derives the coordinate and operator updates used in
+Algorithm~\ref{alg:core_embedding_learning}. Throughout this appendix we
+use the finite-dimensional embedding free energy
+\eqref{eq:finite_embedding_free_energy}. We focus on the main case
+$\Omega_A=0$. If a nonzero convex regularizer $\Omega_A$ is used, the
+posterior-coordinate update becomes the corresponding proximal or
+constrained quadratic subproblem.
+
+For compact notation, define
+\begin{align}
+M_t
+:=
+(P_t^-)^\dagger,
+\qquad
+S_B
+:=
+R_B^{-1},
+\qquad
+S_A
+:=
+Q_A^{-1}.
+\label{eq:app_metric_short_notation}
+\end{align}
+
+\subsection{Posterior-Coordinate Update}
+
+Fix $A^-$, $V_A$, and $V_B$. The terms in
+\eqref{eq:finite_embedding_free_energy} that depend on a single
+posterior coordinate $\va_t^+$ are
+\begin{align}
+J_t^+(\va)
+&=
+\frac12
+\|\tilde{\vb}_t - V_B\va\|_{R_B^{-1}}^2
++
+\frac12
+\|\va-\va_t^-\|_{(P_t^-)^\dagger}^2
+\nonumber\\
+&\quad+
+\mathbf 1_{\{t<T\}}
+\frac12
+\|\va_{t+1}^- - V_A\va\|_{Q_A^{-1}}^2 .
+\label{eq:app_Aplus_local_objective}
+\end{align}
+Using the shorthand in \eqref{eq:app_metric_short_notation}, this is
+\begin{align}
+J_t^+(\va)
+&=
+\frac12
+(\tilde{\vb}_t - V_B\va)^\top
+S_B
+(\tilde{\vb}_t - V_B\va)
++
+\frac12
+(\va-\va_t^-)^\top
+M_t
+(\va-\va_t^-)
+\nonumber\\
+&\quad+
+\mathbf 1_{\{t<T\}}
+\frac12
+(\va_{t+1}^- - V_A\va)^\top
+S_A
+(\va_{t+1}^- - V_A\va).
+\label{eq:app_Aplus_local_objective_expanded}
+\end{align}
+Taking the gradient with respect to $\va$ gives
+\begin{align}
+\nabla_\va J_t^+(\va)
+&=
+V_B^\top S_B
+(V_B\va-\tilde{\vb}_t)
++
+M_t(\va-\va_t^-)
+\nonumber\\
+&\quad+
+\mathbf 1_{\{t<T\}}
+V_A^\top S_A
+(V_A\va-\va_{t+1}^-).
+\label{eq:app_Aplus_gradient}
+\end{align}
+Setting this gradient to zero yields
+\begin{align}
+\left[
+V_B^\top S_B V_B
++
+M_t
++
+\mathbf 1_{\{t<T\}}
+V_A^\top S_A V_A
+\right]\va_t^+
+=
+V_B^\top S_B\tilde{\vb}_t
++
+M_t\va_t^-
++
+\mathbf 1_{\{t<T\}}
+V_A^\top S_A\va_{t+1}^-.
+\label{eq:app_Aplus_normal_equation_short}
+\end{align}
+Therefore,
+\begin{align}
+H_t^+
+&=
+V_B^\top R_B^{-1}V_B
++
+(P_t^-)^\dagger
++
+\mathbf 1_{\{t<T\}}
+V_A^\top Q_A^{-1}V_A,
+\label{eq:app_Aplus_H}
+\\
+h_t^+
+&=
+V_B^\top R_B^{-1}\tilde{\vb}_t
++
+(P_t^-)^\dagger\va_t^-
++
+\mathbf 1_{\{t<T\}}
+V_A^\top Q_A^{-1}\va_{t+1}^-,
+\label{eq:app_Aplus_h}
+\end{align}
+and the posterior-coordinate update is
+\begin{align}
+\va_t^+
+=
+(H_t^+)^{-1}h_t^+.
+\label{eq:app_Aplus_solution}
+\end{align}
+When $H_t^+$ is ill-conditioned, the system can be solved with an
+additional small diagonal loading or by using a numerically stable
+linear solver rather than explicitly forming the inverse.
+
+\subsection{Prior-Coordinate Update}
+
+Next fix $A^+$ and $V_A$. For $t>1$, the terms depending on
+$\va_t^-$ are
+\begin{align}
+J_t^-(\va)
+&=
+\frac12
+\|\va_t^+ - \va\|_{(P_t^-)^\dagger}^2
++
+\frac12
+\|\va - V_A\va_{t-1}^+\|_{Q_A^{-1}}^2 .
+\label{eq:app_Aminus_local_objective}
+\end{align}
+Equivalently,
+\begin{align}
+J_t^-(\va)
+&=
+\frac12
+(\va_t^+ - \va)^\top
+M_t
+(\va_t^+ - \va)
++
+\frac12
+(\va - V_A\va_{t-1}^+)^\top
+S_A
+(\va - V_A\va_{t-1}^+).
+\label{eq:app_Aminus_local_objective_expanded}
+\end{align}
+Taking the gradient with respect to $\va$ gives
+\begin{align}
+\nabla_\va J_t^-(\va)
+=
+M_t(\va-\va_t^+)
++
+S_A(\va - V_A\va_{t-1}^+).
+\label{eq:app_Aminus_gradient}
+\end{align}
+Setting the gradient to zero gives
+\begin{align}
+(M_t+S_A)\va_t^-
+=
+M_t\va_t^+
++
+S_A V_A\va_{t-1}^+.
+\label{eq:app_Aminus_normal_equation_short}
+\end{align}
+Thus,
+\begin{align}
+H_t^-
+&=
+(P_t^-)^\dagger
++
+Q_A^{-1},
+\label{eq:app_Aminus_H}
+\\
+h_t^-
+&=
+(P_t^-)^\dagger\va_t^+
++
+Q_A^{-1}V_A\va_{t-1}^+,
+\label{eq:app_Aminus_h}
+\end{align}
+and
+\begin{align}
+\va_t^-
+=
+(H_t^-)^{-1}h_t^-,
+\qquad
+t=2,\dots,T.
+\label{eq:app_Aminus_solution}
+\end{align}
+
+For $t=1$, the transfer-consistency term is replaced by the initial
+prior term. The local objective becomes
+\begin{align}
+J_1^-(\va)
+&=
+\frac12
+\|\va_1^+ - \va\|_{(P_1^-)^\dagger}^2
++
+\frac12
+\|\va - \va_{\mathrm{init}}\|_{P_0^{-1}}^2.
+\label{eq:app_Aminus_initial_objective}
+\end{align}
+The corresponding normal equation is
+\begin{align}
+\left(
+(P_1^-)^\dagger + P_0^{-1}
+\right)\va_1^-
+=
+(P_1^-)^\dagger\va_1^+
++
+P_0^{-1}\va_{\mathrm{init}}.
+\label{eq:app_Aminus_initial_normal}
+\end{align}
+Hence
+\begin{align}
+H_1^-
+&=
+(P_1^-)^\dagger+P_0^{-1},
+\label{eq:app_Aminus_initial_H}
+\\
+h_1^-
+&=
+(P_1^-)^\dagger\va_1^+
++
+P_0^{-1}\va_{\mathrm{init}},
+\label{eq:app_Aminus_initial_h}
+\\
+\va_1^-
+&=
+(H_1^-)^{-1}h_1^-.
+\label{eq:app_Aminus_initial_solution}
+\end{align}
+
+For data consisting of multiple trajectories, the formula
+\eqref{eq:app_Aminus_initial_solution} is applied at the beginning of
+each trajectory. Transfer-consistency terms are formed only within each
+trajectory and never across trajectory boundaries.
+
+\subsection{Transfer-Operator Update}
+
+For fixed $A^-$ and $A^+$, the transfer matrix $V_A$ is estimated from
+the soft relation
+\begin{align}
+\va_{t+1}^-
+\approx
+V_A\va_t^+.
+\end{align}
+Let
+\begin{align}
+X_A
+&:=
+A_{1:T-1}^+
+=
+[\va_1^+,\dots,\va_{T-1}^+],
+&
+Y_A
+&:=
+A_{2:T}^-
+=
+[\va_2^-,\dots,\va_T^-].
+\label{eq:app_transfer_design_matrices}
+\end{align}
+For multiple trajectories, $X_A$ and $Y_A$ are formed by concatenating
+only valid within-trajectory transition pairs. No column pair is formed
+from the last time index of one trajectory to the first time index of
+another trajectory.
+
+The default operator subproblem is the ridge regression
+\begin{align}
+V_A
+=
+\arg\min_{V\in\mathbb R^{d_A\times d_A}}
+\frac12
+\|Y_A - VX_A\|_F^2
++
+\frac{\lambda_A}{2}
+\|V\|_F^2.
+\label{eq:app_transfer_ridge_problem}
+\end{align}
+Taking the derivative with respect to $V$ gives
+\begin{align}
+(VX_A-Y_A)X_A^\top+\lambda_A V=0.
+\label{eq:app_transfer_gradient}
+\end{align}
+Therefore,
+\begin{align}
+V(X_AX_A^\top+\lambda_A I)
+=
+Y_AX_A^\top.
+\label{eq:app_transfer_normal_equation}
+\end{align}
+Assuming $X_AX_A^\top+\lambda_A I$ is invertible, the solution is
+\begin{align}
+V_A
+=
+Y_AX_A^\top
+(X_AX_A^\top+\lambda_A I)^{-1}.
+\label{eq:app_transfer_closed_form}
+\end{align}
+Substituting the definitions of $X_A$ and $Y_A$ gives
+\begin{align}
+V_A
+=
+A_{2:T}^-
+(A_{1:T-1}^+)^\top
+\left(
+A_{1:T-1}^+
+(A_{1:T-1}^+)^\top
++
+\lambda_A I
+\right)^{-1}.
+\label{eq:app_VA_closed_form_final}
+\end{align}
+
+If a non-isotropic transfer metric $Q_A$ is used directly in the
+operator subproblem, the resulting weighted least-squares problem may
+lead to a Sylvester-type normal equation unless the coordinates are
+whitened or a metric-compatible regularizer is used. The default
+algorithm therefore uses scalar, diagonal, or whitened metrics for the
+operator updates so that the Galerkin ridge form
+\eqref{eq:app_VA_closed_form_final} is preserved.
+
+\subsection{Observable-Operator Update}
+
+For fixed $A^+$, the observable matrix $V_B$ is estimated from the
+centered relation
+\begin{align}
+\tilde{\vb}_t
+\approx
+V_B\va_t^+.
+\end{align}
+Let
+\begin{align}
+X_B
+&:=
+A^+
+=
+[\va_1^+,\dots,\va_T^+],
+&
+Y_B
+&:=
+\tilde B
+=
+[\tilde{\vb}_1,\dots,\tilde{\vb}_T].
+\label{eq:app_observable_design_matrices}
+\end{align}
+The observable-operator subproblem is
+\begin{align}
+V_B
+=
+\arg\min_{V\in\mathbb R^{d_B\times d_A}}
+\frac12
+\|Y_B - VX_B\|_F^2
++
+\frac{\lambda_B}{2}
+\|V\|_F^2.
+\label{eq:app_observable_ridge_problem}
+\end{align}
+The derivative with respect to $V$ is
+\begin{align}
+(VX_B-Y_B)X_B^\top+\lambda_B V=0.
+\label{eq:app_observable_gradient}
+\end{align}
+Thus,
+\begin{align}
+V(X_BX_B^\top+\lambda_B I)
+=
+Y_BX_B^\top,
+\label{eq:app_observable_normal_equation}
+\end{align}
+and
+\begin{align}
+V_B
+=
+Y_BX_B^\top
+(X_BX_B^\top+\lambda_B I)^{-1}.
+\label{eq:app_observable_closed_form}
+\end{align}
+Equivalently,
+\begin{align}
+V_B
+=
+\tilde B(A^+)^\top
+\left(
+A^+(A^+)^\top
++
+\lambda_B I
+\right)^{-1}.
+\label{eq:app_VB_closed_form_final}
+\end{align}
+
+As with the transfer operator, full non-isotropic observation metrics can
+be handled by whitening or by solving the corresponding weighted
+least-squares system directly. The main formulation keeps the
+closed-form Galerkin ridge structure in
+\eqref{eq:app_VB_closed_form_final}.
+
+\subsection{Why the Training Coordinates Are Not Hard-Propagated}
+
+During training, the prior coordinates $A^-$ are not defined by the hard
+constraint
+\begin{align}
+\va_{t+1}^-
+=
+V_A\va_t^+.
+\end{align}
+Instead, $A^-$ and $A^+$ are optimized as variational embedded-state
+coordinates and the transfer relation is imposed softly through the
+transfer-consistency energy. This distinction is necessary for the
+operator update to be meaningful. If $\va_{t+1}^-$ were defined by
+$\va_{t+1}^-=V_A\va_t^+$ during training, the transfer-operator
+regression would become tautological.
+
+At test time, in contrast, the learned operator is used causally:
+\begin{align}
+\bar{\va}_{t+1}^-
+=
+V_A\bar{\va}_t^+.
+\end{align}
+Thus, training uses variational coordinate learning, while test-time
+prediction uses causal filtering recursion.
+
+\section{Metric Choices and Residual Calibration}
+\label{app:metric_choices}
+
+This appendix summarizes the metric choices used in the
+finite-dimensional embedding free energy and in the causal filtering
+recursion. The matrices
+\begin{align}
+R_B,\qquad Q_A,\qquad P_t^-,
+\qquad P_0
+\end{align}
+specify the geometry of centered observation residuals, transfer
+residuals, prior-to-posterior corrections, and the initial boundary
+anchor. They should not be interpreted as covariance parameters of a
+linear-Gaussian latent state-space model. Rather, they define weighted
+embedding discrepancies and recursive least-squares preconditioners for
+Galerkin embedded-belief updates.
+
+\subsection{Roles of the Metric Matrices}
+
+The centered observation residual is
+\begin{align}
+\rho_t
+=
+\tilde{\vb}_t - V_B\va_t^+.
+\label{eq:app_obs_residual}
+\end{align}
+The metric $R_B$ weights this residual through
+\begin{align}
+\|\rho_t\|_{R_B^{-1}}^2.
+\end{align}
+Thus $R_B$ specifies the geometry of centered observation-embedding
+discrepancies in $\mathbb R^{d_B}$.
+
+The transfer residual is
+\begin{align}
+\epsilon_t
+=
+\va_{t+1}^- - V_A\va_t^+.
+\label{eq:app_transfer_residual}
+\end{align}
+The metric $Q_A$ weights this residual through
+\begin{align}
+\|\epsilon_t\|_{Q_A^{-1}}^2.
+\end{align}
+Thus $Q_A$ specifies the geometry of transfer-consistency errors in the
+latent Galerkin coordinate space.
+
+The metric $P_t^-$ weights the prior-to-posterior correction
+\begin{align}
+\va_t^+ - \va_t^-.
+\end{align}
+The term
+\begin{align}
+\|\va_t^+ - \va_t^-\|_{(P_t^-)^\dagger}^2
+\end{align}
+penalizes deviations from the prior embedded belief. In this sense,
+$P_t^-$ plays the role of a local uncertainty metric, inverse-curvature
+metric, or recursive least-squares preconditioner for the embedded-state
+correction step.
+
+Finally, $P_0$ controls the strength of the initial boundary anchor
+\begin{align}
+\|\va_1^- - \va_{\mathrm{init}}\|_{P_0^{-1}}^2.
+\end{align}
+When a meaningful initial embedded law is available, this term anchors
+the first prior coordinate to its Galerkin coordinate. When
+$\va_{\mathrm{init}}=0$ is used only as a reference prior in the
+centered Galerkin gauge, the same term should be interpreted as weak
+boundary regularization.
+
+All metric choices affect the geometry of the optimization problem.
+They do not change the statistical target, which remains the projected
+prior and posterior conditional mean embeddings of the latent state law.
+
+\subsection{Fixed Scalar Metrics}
+
+The main fixed-metric formulation uses scalar metrics
+\begin{align}
+R_B
+&=
+\sigma_B^2 I_{d_B},
+&
+Q_A
+&=
+\sigma_A^2 I_{d_A},
+&
+P_t^-
+&=
+p I_{d_A},
+&
+P_0
+&=
+c_0p I_{d_A}.
+\label{eq:app_fixed_scalar_metrics}
+\end{align}
+With this choice, the embedding free energy contains the weighted
+Euclidean terms
+\begin{align}
+\frac{1}{2\sigma_B^2}
+\sum_{t=1}^T
+\|\tilde{\vb}_t - V_B\va_t^+\|_2^2
++
+\frac{1}{2p}
+\sum_{t=1}^T
+\|\va_t^+ - \va_t^-\|_2^2
++
+\frac{1}{2\sigma_A^2}
+\sum_{t=1}^{T-1}
+\|\va_{t+1}^- - V_A\va_t^+\|_2^2,
+\label{eq:app_fixed_metric_weighted_objective}
+\end{align}
+together with the initial boundary term
+\begin{align}
+\frac{1}{2c_0p}
+\|\va_1^- - \va_{\mathrm{init}}\|_2^2.
+\label{eq:app_fixed_metric_initial_term}
+\end{align}
+Equivalently, the first three scalar parameters define the loss weights
+\begin{align}
+w_B=\sigma_B^{-2},
+\qquad
+w_P=p^{-1},
+\qquad
+w_A=\sigma_A^{-2}.
+\end{align}
+The scalar $c_0$ controls the relative strength of the initial boundary
+anchor. These scalars are user-specified hyperparameters held fixed
+during the core coordinate optimization.
+
+For causal filtering in the same fixed-metric setting, the gain is
+\begin{align}
+K
+=
+p V_B^\top
+\left(
+p V_BV_B^\top+\sigma_B^2 I_{d_B}
+\right)^{-1},
+\label{eq:app_fixed_metric_gain}
+\end{align}
+and the posterior correction is
+\begin{align}
+\bar{\va}_t^+
+=
+\bar{\va}_t^-
++
+K
+\left(
+\tilde{\vb}_t - V_B\bar{\va}_t^-
+\right).
+\label{eq:app_fixed_metric_test_update}
+\end{align}
+Since $P_t^-=pI_{d_A}$ is fixed, this setting does not propagate a
+time-varying covariance or inverse-curvature metric.
+
+The metric choices described here are independent of the numerical seed
+used to start the alternating coordinate solver. Changing the seed may
+affect optimization, but it does not alter the definition of the
+embedding free-energy objective or the meaning of the metric terms.
+
+\subsection{Residual-Calibrated Metrics}
+
+A residual-calibrated metric variant can estimate $R_B$ and $Q_A$ from
+empirical residuals. Given current coordinates and operators, define
+\begin{align}
+\rho_t
+&=
+\tilde{\vb}_t - V_B\va_t^+,
+&
+\epsilon_t
+&=
+\va_{t+1}^- - V_A\va_t^+.
+\label{eq:app_residuals_for_calibration}
+\end{align}
+The empirical residual covariance estimates are
+\begin{align}
+\widehat R_B
+&=
+\frac1T
+\sum_{t=1}^T
+\rho_t\rho_t^\top,
+\label{eq:app_Rhat_full}
+\\
+\widehat Q_A
+&=
+\frac1{T-1}
+\sum_{t=1}^{T-1}
+\epsilon_t\epsilon_t^\top.
+\label{eq:app_Qhat_full}
+\end{align}
+Directly using these matrices can be unstable, especially when the
+number of samples is small or the residuals are low rank. A shrinkage
+and diagonal-loading form is therefore
+\begin{align}
+R_B
+&=
+(1-\alpha_R)\widehat R_B
++
+\alpha_R
+\frac{\operatorname{tr}(\widehat R_B)}{d_B}
+I_{d_B}
++
+\varepsilon_R I_{d_B},
+\label{eq:app_RB_shrinkage}
+\\
+Q_A
+&=
+(1-\alpha_Q)\widehat Q_A
++
+\alpha_Q
+\frac{\operatorname{tr}(\widehat Q_A)}{d_A}
+I_{d_A}
++
+\varepsilon_Q I_{d_A}.
+\label{eq:app_QA_shrinkage}
+\end{align}
+A safer first residual-calibrated variant uses only the diagonal parts:
+\begin{align}
+R_B
+&=
+\operatorname{diag}(\widehat R_B)
++
+\varepsilon_R I_{d_B},
+\label{eq:app_RB_diagonal}
+\\
+Q_A
+&=
+\operatorname{diag}(\widehat Q_A)
++
+\varepsilon_Q I_{d_A}.
+\label{eq:app_QA_diagonal}
+\end{align}
+The residual-calibrated metrics should be updated in an outer loop.
+During each coordinate-minimization step, $R_B$ and $Q_A$ are held
+fixed. Treating them as unconstrained inner-loop optimization variables
+can lead to scale degeneracies and is not part of the main formulation.
+
+\subsection{Interaction with Operator Updates}
+
+The coordinate updates can use the metrics $R_B$ and $Q_A$ directly.
+However, if full non-isotropic metrics are also used inside the
+operator subproblems, the closed-form ridge updates may change.
+
+For example, the standard centered observable-operator update is
+\begin{align}
+V_B
+=
+\tilde B(A^+)^\top
+\left(
+A^+(A^+)^\top+\lambda_B I
+\right)^{-1}.
+\label{eq:app_standard_centered_VB_update}
+\end{align}
+If the operator subproblem is instead written with a full observation
+metric as
+\begin{align}
+\min_V
+\frac12
+\sum_{t=1}^T
+\|\tilde{\vb}_t - V\va_t^+\|_{R_B^{-1}}^2
++
+\frac{\lambda_B}{2}
+\|V\|_F^2,
+\label{eq:app_metric_weighted_operator_problem}
+\end{align}
+then the normal equation becomes
+\begin{align}
+R_B^{-1}(VA^+ - \tilde B)(A^+)^\top
++
+\lambda_B V
+=
+0.
+\label{eq:app_metric_weighted_operator_normal}
+\end{align}
+After multiplying by $R_B$, this becomes
+\begin{align}
+V A^+(A^+)^\top
+-
+\tilde B(A^+)^\top
++
+\lambda_B R_B V
+=
+0,
+\label{eq:app_metric_weighted_operator_sylvester}
+\end{align}
+which is generally not the same ridge form unless the metric is scalar,
+diagonal in a compatible coordinate system, or the coordinates are
+whitened. For this reason, the main formulation keeps the operator
+subproblems in the standard Galerkin ridge form. Full weighted
+least-squares operator updates may be studied as an implementation
+variant.
+
+\subsection{KKR-Style Metric-Recursive Variant}
+
+A closer KKR-style metric variant propagates $P_t^-$ as a
+time-dependent covariance or inverse-curvature metric. Given $P_t^-$,
+the gain is
+\begin{align}
+K_t
+=
+P_t^-V_B^\top
+\left(
+V_BP_t^-V_B^\top+R_B
+\right)^{-1}.
+\label{eq:app_metric_recursive_gain}
+\end{align}
+The posterior coordinate is updated by
+\begin{align}
+\bar{\va}_t^+
+=
+\bar{\va}_t^-
++
+K_t
+\left(
+\tilde{\vb}_t - V_B\bar{\va}_t^-
+\right).
+\label{eq:app_metric_recursive_coordinate_update}
+\end{align}
+The corresponding inverse-curvature update can be written as
+\begin{align}
+P_t^+
+=
+P_t^-
+-
+K_tV_BP_t^-.
+\label{eq:app_metric_recursive_simple_update}
+\end{align}
+For numerical stability, the Joseph form may be used:
+\begin{align}
+P_t^+
+=
+(I-K_tV_B)P_t^-(I-K_tV_B)^\top
++
+K_tR_BK_t^\top.
+\label{eq:app_metric_recursive_joseph}
+\end{align}
+The prior metric is propagated by
+\begin{align}
+P_{t+1}^-
+=
+V_AP_t^+V_A^\top
++
+Q_A.
+\label{eq:app_metric_recursive_prediction}
+\end{align}
+In this formulation, $P_t^-$ should be interpreted as a local metric,
+uncertainty matrix, or inverse-curvature object for the Galerkin
+embedded-belief update. It is not introduced by assuming that the
+Galerkin coordinate itself is distributed according to a Gaussian law.
+The recursion is therefore an optional KKR-style metric choice rather
+than a change in the statistical target.
+
+\subsection{Numerical Stability}
+
+When using residual-calibrated or metric-recursive variants, the
+following numerical precautions are useful:
+\begin{align}
+R_B
+&\leftarrow
+\frac12(R_B+R_B^\top)
++
+\varepsilon_R I,
+\\
+Q_A
+&\leftarrow
+\frac12(Q_A+Q_A^\top)
++
+\varepsilon_Q I,
+\\
+P_t^-
+&\leftarrow
+\frac12(P_t^-+(P_t^-)^\top)
++
+\varepsilon_P I.
+\end{align}
+If eigenvalues become too small or negative because of numerical error,
+eigenvalue flooring can be applied. In long sequences, one may also
+control the spectral norm of $V_A$ or use a diagonal or low-rank
+approximation to $P_t^-$.
+
+\subsection{Recommended Metric Usage}
+
+The recommended progression is to begin with the fixed scalar metric
+formulation:
+\begin{align}
+R_B=\sigma_B^2 I,
+\qquad
+Q_A=\sigma_A^2 I,
+\qquad
+P_t^-=pI,
+\qquad
+P_0=c_0pI.
+\end{align}
+After the core solver is stable, residual-calibrated diagonal metrics
+can be studied as the main metric refinement. KKR-style
+metric-recursive updates should be treated as a further extension or
+ablation that strengthens the connection to kernel Kalman filtering
+without changing the embedded-belief target.
+
+
+\section{Initialization and Normalization}
+\label{app:initialization_normalization}
+
+This appendix records the limited implementation conventions needed to
+start the core alternating solver. These conventions should not be
+confused with the statistical target of the method. The embedded-state
+coordinates are defined by the embedding free-energy problem and by the
+learned causal prediction--correction recursion, not by the numerical
+initializer.
+
+\subsection{Initial Prior Coordinate}
+
+The initial prior coordinate is conceptually distinct from the numerical
+initialization of the coordinate arrays $A^-$ and $A^+$. Ideally,
+\begin{align}
+\va_{\mathrm{init}}
+\approx
+P_A\mu_{\mathrm{init}},
+\label{eq:app_initial_prior_coordinate}
+\end{align}
+where $\mu_{\mathrm{init}}$ is an initial prior embedded state law. If an
+initial ensemble, an externally specified initial distribution, or
+another reliable estimate of this embedded law is available, its
+Galerkin coordinate may be supplied to the algorithm.
+
+If no meaningful initial embedded law is available, we use
+$\va_{\mathrm{init}}=0$ in the centered Galerkin gauge. This zero vector
+is a reference prior, not a probabilistic claim about the true initial
+state law. In that case, the initial term in the embedding free energy
+acts as weak boundary regularization. Its strength is controlled by
+$P_0=c_0pI$.
+
+\subsection{Numerical Seeds for the Training Coordinates}
+
+The coordinate arrays
+\begin{align}
+A^-
+&=
+[\va_1^-,\dots,\va_T^-],
+&
+A^+
+&=
+[\va_1^+,\dots,\va_T^+]
+\end{align}
+are optimized as training-time variational coordinates. Since the true
+latent states are not observed, these arrays cannot be initialized from
+samples of $\phi_x(\vx(t))$. They require numerical seeds only because
+the embedding free-energy problem is solved by an alternating
+optimization procedure.
+
+These seeds are not part of the statistical definition of the state.
+They do not define the latent coordinate system, and they should not be
+interpreted as prior or posterior embedded beliefs. In particular, the
+observation embedding matrix $\tilde B$ is not used to define
+$A^-$ or $A^+$. It enters the learning problem through the
+observation-consistency and correction terms.
+
+The implementation must provide nondegenerate numerical seeds for
+$A^{-,(0)}$ and $A^{+,(0)}$. The exact choice of the seed is an
+implementation protocol and may be deterministic, randomized, or
+externally supplied. The only requirement at the formulation level is
+that the seed should allow the alternating solver to start without
+degenerate operator updates.
+
+\subsection{No DSE CCA State Warm Start}
+
+The proposed method replaces the CCA-based state-construction block of
+DSE. Therefore, DSE functional CCA coordinates or stochastic-realization
+coordinates are not used as warm starts for $A^-$ or $A^+$. This
+separation keeps the proposed state-coordinate learning principle
+independent of the DSE state-construction principle.
+
+Spectral initializations such as PCA or SVD of the observation embedding
+matrix may be considered as numerical warm starts in separate
+implementation studies. They are not part of the main formulation and
+should not be described as the state-construction principle of the
+method.
+
+\subsection{Observation-Side Centering}
+
+The main formulation uses a centered Galerkin convention on the
+observation side. After computing
+\begin{align}
+\vm_t
+=
+u_\eta(\vy(t)),
+\qquad
+\vb_t
+=
+\psi_\omega(\vm_t),
+\end{align}
+we define
+\begin{align}
+\bar{\vb}
+&=
+\frac1T\sum_{t=1}^T \vb_t,
+&
+\tilde{\vb}_t
+&=
+\vb_t-\bar{\vb},
+&
+\tilde B
+&=
+[\tilde{\vb}_1,\dots,\tilde{\vb}_T],
+\label{eq:app_centered_observation_embeddings}
+\\
+\bar{\vm}
+&=
+\frac1T\sum_{t=1}^T \vm_t,
+&
+\tilde{\vm}_t
+&=
+\vm_t-\bar{\vm},
+&
+\tilde M
+&=
+[\tilde{\vm}_1,\dots,\tilde{\vm}_T].
+\label{eq:app_centered_encoder_features}
+\end{align}
+The core solver uses $\tilde B$. The read-out stage predicts centered
+encoder features, and $\bar{\vm}$ is restored before applying the
+decoder. Test-time observation embeddings are centered using the stored
+training mean $\bar{\vb}$.
+
+This centering convention is a numerical coordinate convention for a
+linear no-intercept observable operator. It is not an additional
+probabilistic assumption on the latent process.
+
+\subsection{Coordinate Gauge}
+
+The Galerkin coordinates have a linear gauge freedom. For any invertible
+matrix $S\in\mathbb R^{d_A\times d_A}$,
+\begin{align}
+\va_t^\pm
+&\mapsto
+S\va_t^\pm,
+&
+V_A
+&\mapsto
+S V_A S^{-1},
+&
+V_B
+&\mapsto
+V_B S^{-1}
+\end{align}
+represents the same linear coordinate system up to a change of basis.
+This non-identifiability is standard in latent-coordinate models and
+does not invalidate the operator interpretation.
+
+The main formulation does not rely on hard whitening or affine
+re-centering of the latent coordinates. If an implementation applies a
+linear rescaling of the latent coordinates for numerical conditioning,
+the same coordinate convention must be applied consistently to
+$A^-$, $A^+$, $\va_{\mathrm{init}}$, and the operators. In practice, it
+is often simpler to recompute $V_A$ and $V_B$ by the Galerkin
+ridge-regression updates after any such numerical rescaling.
+
+
+
+\vskip 0.2in
+\bibliography{ref}
+
+
+\end{document}
