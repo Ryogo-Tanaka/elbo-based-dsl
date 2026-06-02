@@ -14,6 +14,14 @@ from .preprocessing import (
     standardize_features,
     transform_standardizer,
 )
+from .prediction import decode_predictions, unstandardize_M
+from .readout import (
+    MLPReadout,
+    fit_linear_readout,
+    predict_linear_readout,
+    predict_mlp_readout,
+    train_mlp_readout,
+)
 from .solver import CoreFitResult, fit_core
 
 __all__ = [
@@ -24,16 +32,23 @@ __all__ = [
     "ObjectiveComponents",
     "CoreFitResult",
     "FilterResult",
+    "MLPReadout",
     "compute_objective_components",
     "compute_total_objective",
+    "decode_predictions",
     "fit_standardizer",
+    "fit_linear_readout",
     "fit_core",
     "initialize_warm_start",
     "inverse_transform_standardizer",
     "load_config",
+    "predict_linear_readout",
+    "predict_mlp_readout",
     "run_causal_filter",
     "standardize_features",
+    "train_mlp_readout",
     "transform_standardizer",
+    "unstandardize_M",
     "update_A_minus",
     "update_A_plus",
     "update_V_A",
