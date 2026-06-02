@@ -23,6 +23,7 @@ from .readout import (
     train_mlp_readout,
 )
 from .solver import CoreFitResult, fit_core
+from .toy_data import ToyDataResult, generate_damped_rotation
 
 __all__ = [
     "PreprocessResult",
@@ -33,12 +34,14 @@ __all__ = [
     "CoreFitResult",
     "FilterResult",
     "MLPReadout",
+    "ToyDataResult",
     "compute_objective_components",
     "compute_total_objective",
     "decode_predictions",
     "fit_standardizer",
     "fit_linear_readout",
     "fit_core",
+    "generate_damped_rotation",
     "initialize_warm_start",
     "inverse_transform_standardizer",
     "load_config",
