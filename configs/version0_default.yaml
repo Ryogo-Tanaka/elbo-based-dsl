@@ -1,0 +1,100 @@
+project:
+  name: dsl_elto_version0
+  random_seed: 0
+  dtype: float64
+  device: cpu
+
+scope:
+  single_trajectory: true
+  allow_multiple_trajectories: false
+  allow_svd_init: false
+  allow_direct_B_to_A_init: false
+  allow_inference_encoder: false
+  allow_residual_calibrated_metrics: false
+  allow_kkr_covariance_recursion: false
+  allow_encoder_refinement: false
+  allow_posterior_reconstruction_loss: false
+
+features:
+  standardize: true
+  eps: 1.0e-8
+  use_precomputed_features: true
+  feature_array_layout: T_by_d
+
+model:
+  d_A: 8
+  d_B: null
+  m: null
+
+metrics:
+  sigma_b2: 1.0
+  sigma_a2: 1.0
+  p: 1.0
+  c0: 10.0
+
+ridge:
+  lambda_a: 1.0e-3
+  lambda_b: 1.0e-3
+  lambda_readout: 1.0e-3
+  normalized_covariance_form: true
+
+initialization:
+  type: correction_warm_start
+  vb_seed: random_column_normalized
+  va_seed: zero
+  a_init_mode: zero_reference
+  external_a_init_path: null
+  seed_scale: 1.0
+
+solver:
+  max_outer_iter: 100
+  tol_rel_loss: 1.0e-6
+  min_outer_iter: 3
+  check_finite: true
+  fail_on_nan: true
+  fail_on_inf: true
+  max_abs_A: 1.0e+6
+  min_rms_A: 1.0e-12
+
+filtering:
+  use_fixed_gain: true
+  use_same_p_all_times: true
+  separate_initial_filter_metric: false
+
+readout:
+  type: linear_ridge
+  train_on_filter_prior: true
+  use_posterior_reconstruction: false
+  mlp:
+    hidden_dim: 64
+    num_layers: 2
+    activation: relu
+    lr: 1.0e-3
+    epochs: 500
+    weight_decay: 1.0e-4
+    batch_size: null
+    early_stopping: false
+    patience: 20
+
+toy_data:
+  type: damped_rotation
+  T: 300
+  state_dim: 2
+  obs_dim: 3
+  radius: 0.98
+  omega: 0.20
+  process_noise_std: 0.01
+  observation_noise_std: 0.05
+  nonlinear_observation: true
+
+logging:
+  output_dir: outputs/toy_sanity
+  save_config: true
+  save_losses_csv: true
+  save_metrics_json: true
+  save_arrays: false
+  save_plots: true
+  log_every: 1
+
+tests:
+  run_slow_mlp_tests: false
