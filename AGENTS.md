@@ -16,6 +16,10 @@ Read these files in order before making implementation decisions:
 
 The implementation spec overrides the formulation memo for implementation details.
 
+For implementation decisions, `docs/specs/dsl_elto_version0_implementation_spec.md` is the primary source for equations, shapes, defaults, numerical conventions, and exclusions.
+
+`docs/specs/dsl_elto_codex_task_decomposition_v0.md` is secondary: use it for task order, task boundaries, repository layout, and acceptance criteria. If it conflicts with the implementation spec, the implementation spec wins.
+
 Historical notes under `docs/notes/` are background only. Do not treat them as implementation source of truth unless the user explicitly says so.
 
 ## Language
@@ -29,6 +33,8 @@ Historical notes under `docs/notes/` are background only. Do not treat them as i
 - 作業前に `git status` を確認する。
 - 未コミット変更がある場合は、編集前にユーザーへ確認する。
 - 変更前に関連ファイルを読み、短い計画を提示する。
+- Implement only the requested task group from the task decomposition. Do not combine later tasks unless explicitly requested.
+- Before implementing a task, restate the relevant task number(s), intended files, and test plan.
 - 大きな変更は小さな差分に分ける。
 - 既存の設計、命名、フォーマットに合わせる。
 - 新しい依存パッケージを追加する前に理由を説明する。
@@ -58,6 +64,14 @@ Core assumptions:
 - Phase 1 training coordinates and Phase 2 filtering coordinates are distinct
 - readout supports both `linear_ridge` and `mlp`
 
+## Version 0 implementation invariants
+
+- Public functions must check array rank and expected shapes.
+- Core code uses `[T, d]`; transpose only locally when applying mathematical formulas.
+- Config validation must reject unsupported Version 0 options rather than silently ignoring them.
+- Numerical failure such as NaN, inf, failed ridge solve, or coordinate explosion must raise a clear error or warning.
+- Toy sanity scripts are solver sanity checks, not benchmark experiments.
+
 ## Explicitly excluded from Version 0
 
 Do not implement:
@@ -75,6 +89,8 @@ Do not implement:
 - hard whitening
 - full non-isotropic metrics
 - experiment benchmark runners beyond the requested toy sanity script
+
+Do not describe the method as a Gaussian latent SSM likelihood, a standard likelihood-based ELBO, an exact KKR / KKF implementation, a KBR reimplementation, or a DSE CCA state-construction method.
 
 ## Matrix and naming convention
 
@@ -116,6 +132,8 @@ MLP readout is trained only in Phase 3 and must not update the core solver.
 ## Testing rule
 
 Every implementation task must add or update tests.
+
+Tests must cover shape conventions, unsupported-option rejection, and leakage prevention: prediction/readout must use `A_filter_minus`, not `A_train_*` and not posterior reconstruction.
 
 Before reporting completion:
 
