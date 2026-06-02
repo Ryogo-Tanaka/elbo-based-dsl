@@ -1,44 +1,108 @@
-# Local-only Codex / agent instructions
-/AGENTS.md
+# ----------------------------
+# Local-only prompts / notes
+# ----------------------------
+_prompt/
+AGENTS.local.md
 
-# Private prompt / notes
-/_prompt/
-
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Secrets
+# ----------------------------
+# Secrets / credentials
+# ----------------------------
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.secret
+secrets/
+credentials/
 
-# Build artifacts
+# ----------------------------
+# Python caches
+# ----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# ----------------------------
+# Virtual environments
+# ----------------------------
+.venv/
+venv/
+env/
+ENV/
+__pypackages__/
+
+# ----------------------------
+# Build / packaging artifacts
+# ----------------------------
 build/
 dist/
 *.egg-info/
+.eggs/
+pip-wheel-metadata/
 
-# Outputs / generated files
+# ----------------------------
+# Jupyter
+# ----------------------------
+.ipynb_checkpoints/
+
+# ----------------------------
+# Project outputs / generated artifacts
+# ----------------------------
 outputs/
 results/
+runs/
 checkpoints/
 logs/
+wandb/
+mlruns/
+lightning_logs/
 
-# OS/editor
+# Large generated arrays / model artifacts
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.joblib
+
+# ----------------------------
+# LaTeX build artifacts
+# ----------------------------
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+
+# ----------------------------
+# OS / editor
+# ----------------------------
 .DS_Store
 Thumbs.db
+
+# VS Code local settings
 .vscode/

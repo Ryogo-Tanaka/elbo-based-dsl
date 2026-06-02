@@ -12,7 +12,7 @@ Read these files in order before making implementation decisions:
 
 1. `docs/specs/dsl_elto_version0_implementation_spec.md`
 2. `docs/specs/dsl_elto_codex_task_decomposition_v0.md`
-3. `docs/formulation/_formulation_memo_current.tex` only for mathematical background
+3. `docs/formulation/_formulation_memo (10).tex` only for mathematical background
 
 The implementation spec overrides the formulation memo for implementation details.
 
@@ -35,6 +35,7 @@ Historical notes under `docs/notes/` are background only. Do not treat them as i
 - 変更前に関連ファイルを読み、短い計画を提示する。
 - Implement only the requested task group from the task decomposition. Do not combine later tasks unless explicitly requested.
 - Before implementing a task, restate the relevant task number(s), intended files, and test plan.
+- The first implementation request should target Tasks 0-2 only: scaffold, config schema/validation, and shape utilities. Do not implement algorithmic updates in that first task group.
 - 大きな変更は小さな差分に分ける。
 - 既存の設計、命名、フォーマットに合わせる。
 - 新しい依存パッケージを追加する前に理由を説明する。
@@ -69,6 +70,7 @@ Core assumptions:
 - Public functions must check array rank and expected shapes.
 - Core code uses `[T, d]`; transpose only locally when applying mathematical formulas.
 - Config validation must reject unsupported Version 0 options rather than silently ignoring them.
+- If defaults conflict across docs, follow the implementation spec; in particular, use `min_outer_iter=3`.
 - Numerical failure such as NaN, inf, failed ridge solve, or coordinate explosion must raise a clear error or warning.
 - Toy sanity scripts are solver sanity checks, not benchmark experiments.
 
@@ -111,7 +113,7 @@ Do not use `A_filter_plus` as the main prediction state. It may be logged only f
 
 Codex may create or edit these implementation directories when requested:
 
-- `src/dsl_elto/`
+- `dsl_elto/`
 - `tests/`
 - `configs/`
 - `scripts/`
@@ -126,6 +128,8 @@ Implement both:
 - `mlp`
 
 Core solver sanity tests should use `linear_ridge`.
+
+For `linear_ridge`, store the readout as `R_readout` with shape `[m, d_B]`, and predict with `ZM_pred = H_prior @ R_readout.T`.
 
 MLP readout is trained only in Phase 3 and must not update the core solver.
 
