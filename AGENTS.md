@@ -113,7 +113,7 @@ Do not use `A_filter_plus` as the main prediction state. It may be logged only f
 
 Codex may create or edit these implementation directories when requested:
 
-- `dsl_elto/`
+- `src/dsl_elto/`
 - `tests/`
 - `configs/`
 - `scripts/`
@@ -138,6 +138,13 @@ MLP readout is trained only in Phase 3 and must not update the core solver.
 Every implementation task must add or update tests.
 
 Tests must cover shape conventions, unsupported-option rejection, and leakage prevention: prediction/readout must use `A_filter_minus`, not `A_train_*` and not posterior reconstruction.
+
+Toy sanity smoke commands:
+
+- `python scripts/run_toy_sanity.py --config configs/toy_sanity_linear.yaml`
+- `python scripts/run_toy_sanity.py --config configs/toy_sanity_mlp.yaml`
+
+Toy sanity is not a benchmark; use it only to verify finite objectives, filtering recursion, readout training, and prediction-path wiring.
 
 Before reporting completion:
 
